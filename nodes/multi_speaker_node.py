@@ -24,12 +24,15 @@ from .model_cache import (
     cancel_event,
     get_cache_key,
     get_cached_model,
+    get_or_cache_whisper,
     is_offloaded,
     offload_model_to_cpu,
+    offload_whisper_to_cpu,
     resume_model_to_cuda,
     set_cached_model,
     set_keep_loaded,
     unload_model,
+    unload_whisper,
 )
 
 try:
@@ -210,7 +213,7 @@ if _V3:
                     ),
                     IO.Combo.Input(
                         "attention",
-                        options=["auto", "sdpa", "sage_attention", "flash_attention"],
+                        options=["auto", "eager", "sage_attention"],
                         tooltip="Attention implementation.",
                     ),
                     IO.Int.Input(
@@ -498,7 +501,7 @@ else:
                     }),
                     "device": (["auto", "cuda", "cpu", "mps"], {"default": "auto"}),
                     "dtype": (["auto", "bf16", "fp16", "fp32"], {"default": "auto"}),
-                    "attention": (["auto", "sdpa", "sage_attention", "flash_attention"], {"default": "auto"}),
+                    "attention": (["auto", "eager", "sage_attention"], {"default": "auto"}),
                     "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1}),
                     "keep_model_loaded": ("BOOLEAN", {"default": True}),
                 },
@@ -612,8 +615,10 @@ else:
                         gen_kwargs["ref_text"] = speaker_ref_text.strip()
                     elif whisper_model is not None:
                         # Pre-loaded Whisper available - inject for this speaker
-                        omnivoice_model._asr_pipe = whisper_model["pipeline"]
-                        speakers_need_whisper.add(speaker_idx + 1)
+                        whisper_pipe = get_or_cache_whisper(whisper_model, model, device, dtype)
+                        if whisper_pipe is not None:
+                            omnivoice_model._asr_pipe = whisper_pipe
+                            speakers_need_whisper.add(speaker_idx + 1)
 
                     # Generate audio for this line
                     with torch.no_grad():
@@ -650,8 +655,10 @@ else:
             finally:
                 if not keep_model_loaded:
                     unload_model()
+                    unload_whisper()
                 else:
                     offload_model_to_cpu()
+                    offload_whisper_to_cpu()
 
             return (result,)
 

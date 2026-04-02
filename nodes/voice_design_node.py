@@ -146,10 +146,14 @@ class OmniVoiceVoiceDesignTTS:
                     },
                 ),
                 "attention": (
-                    ["auto", "sdpa", "sage_attention", "flash_attention"],
+                    ["auto", "eager", "sage_attention"],
                     {
                         "default": "auto",
-                        "tooltip": "Attention implementation. 'auto' uses model default.",
+                        "tooltip": (
+                            "Attention implementation. "
+                            "'auto' uses model default (eager). "
+                            "'sage_attention' uses SageAttention CUDA kernels (requires SM80+ GPU)."
+                        ),
                     },
                 ),
                 "seed": (

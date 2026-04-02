@@ -21,12 +21,15 @@ from .model_cache import (
     cancel_event,
     get_cache_key,
     get_cached_model,
+    get_or_cache_whisper,
     is_offloaded,
     offload_model_to_cpu,
+    offload_whisper_to_cpu,
     resume_model_to_cuda,
     set_cached_model,
     set_keep_loaded,
     unload_model,
+    unload_whisper,
 )
 
 try:
@@ -151,10 +154,14 @@ class OmniVoiceVoiceCloneTTS:
                     },
                 ),
                 "attention": (
-                    ["auto", "sdpa", "sage_attention", "flash_attention"],
+                    ["auto", "eager", "sage_attention"],
                     {
                         "default": "auto",
-                        "tooltip": "Attention implementation. 'auto' uses model default.",
+                        "tooltip": (
+                            "Attention implementation. "
+                            "'auto' uses model default (eager). "
+                            "'sage_attention' uses SageAttention CUDA kernels (requires SM80+ GPU)."
+                        ),
                     },
                 ),
                 "seed": (
@@ -254,9 +261,10 @@ class OmniVoiceVoiceCloneTTS:
         if ref_text.strip():
             logger.info(f"Reference transcript provided — bypassing Whisper ASR")
         elif whisper_model is not None:
-            logger.info(f"No reference transcript — using pre-loaded Whisper ASR")
-            # Inject the pre-loaded ASR pipeline into OmniVoice
-            omnivoice_model._asr_pipe = whisper_model["pipeline"]
+            whisper_pipe = get_or_cache_whisper(whisper_model, model, device, dtype)
+            if whisper_pipe is not None:
+                logger.info("No reference transcript — using pre-loaded Whisper ASR")
+                omnivoice_model._asr_pipe = whisper_pipe
         else:
             logger.info("No reference transcript — Whisper will auto-transcribe (will download if not cached)")
 
@@ -311,8 +319,10 @@ class OmniVoiceVoiceCloneTTS:
         finally:
             if not keep_model_loaded:
                 unload_model()
+                unload_whisper()
             else:
                 offload_model_to_cpu()
+                offload_whisper_to_cpu()
 
         return (result,)
 

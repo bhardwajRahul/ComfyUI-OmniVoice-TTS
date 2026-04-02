@@ -22,12 +22,15 @@ from .model_cache import (
     cancel_event,
     get_cache_key,
     get_cached_model,
+    get_or_cache_whisper,
     is_offloaded,
     offload_model_to_cpu,
+    offload_whisper_to_cpu,
     resume_model_to_cuda,
     set_cached_model,
     set_keep_loaded,
     unload_model,
+    unload_whisper,
 )
 
 try:
@@ -197,12 +200,13 @@ class OmniVoiceLongformTTS:
                     },
                 ),
                 "attention": (
-                    ["auto", "sdpa", "sage_attention", "flash_attention"],
+                    ["auto", "eager", "sage_attention"],
                     {
                         "default": "auto",
                         "tooltip": (
                             "Attention implementation. "
-                            "'auto' uses model default (SDPA)."
+                            "'auto' uses model default (eager). "
+                            "'sage_attention' uses SageAttention CUDA kernels (requires SM80+ GPU)."
                         ),
                     },
                 ),
@@ -321,8 +325,10 @@ class OmniVoiceLongformTTS:
                 )
 
             if not ref_text.strip() and whisper_model is not None:
-                logger.info("Using pre-loaded Whisper ASR for voice transcription")
-                omnivoice_model._asr_pipe = whisper_model["pipeline"]
+                whisper_pipe = get_or_cache_whisper(whisper_model, model, device, dtype)
+                if whisper_pipe is not None:
+                    logger.info("Using pre-loaded Whisper ASR for voice transcription")
+                    omnivoice_model._asr_pipe = whisper_pipe
             elif not ref_text.strip():
                 logger.info("No ref_text — Whisper will auto-transcribe (downloads if not cached)")
 
@@ -396,8 +402,10 @@ class OmniVoiceLongformTTS:
         finally:
             if not keep_model_loaded:
                 unload_model()
+                unload_whisper()
             else:
                 offload_model_to_cpu()
+                offload_whisper_to_cpu()
 
         return (result,)
 

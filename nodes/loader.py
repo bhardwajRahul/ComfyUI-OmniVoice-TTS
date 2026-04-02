@@ -274,6 +274,54 @@ def comfy_audio_to_numpy(audio_dict: dict, target_sr: Optional[int] = None) -> T
     return audio_np, source_sr
 
 
+def _resolve_attn_implementation(attention: str, device: str) -> str | None:
+    """Resolve attention implementation for OmniVoice's Qwen3 LLM backbone.
+
+    OmniVoice only supports "eager" attention through transformers.
+    "sage_attention" is handled via post-load monkey-patching.
+
+    Args:
+        attention: User's attention choice ("auto", "eager", "sage_attention")
+        device: Target device
+
+    Returns:
+        attn_implementation value for transformers ("eager" or None)
+    """
+    if attention == "auto":
+        return None
+
+    if attention == "eager":
+        return "eager"
+
+    if attention == "sage_attention":
+        if device != "cuda":
+            logger.warning(
+                f"sage_attention is only supported on CUDA. "
+                f"Falling back to eager on {device}."
+            )
+            return "eager"
+        try:
+            from .sage_attention_patch import SAGE_ATTENTION_AVAILABLE
+            if not SAGE_ATTENTION_AVAILABLE:
+                logger.warning(
+                    "sage_attention requested but sageattention is not installed "
+                    "or GPU is not supported. Install with: pip install sageattention\n"
+                    "Falling back to eager."
+                )
+                return "eager"
+        except ImportError:
+            logger.warning(
+                "sage_attention requested but sageattention is not installed. "
+                "Install with: pip install sageattention\n"
+                "Falling back to eager."
+            )
+            return "eager"
+        # Load with eager, then monkey-patch Qwen3Attention.forward
+        return "eager"
+
+    return None
+
+
 def load_model(
     model_name: str,
     device: str,
@@ -286,7 +334,7 @@ def load_model(
         model_name: HuggingFace model name or local folder name
         device: Device choice ("auto", "cuda", "cpu", "mps")
         precision: Precision choice ("auto", "bf16", "fp16", "fp32")
-        attention: Attention implementation ("auto", "sdpa", "sage_attention", "flash_attention")
+        attention: Attention implementation ("auto", "eager", "sage_attention")
 
     Returns:
         Tuple of (model, None) - no tokenizer needed for OmniVoice
@@ -322,8 +370,11 @@ def load_model(
             model_identifier = str(local_path)
             logger.info(f"Using local model at: {local_path}")
 
+    # Resolve attention implementation
+    attn_impl = _resolve_attn_implementation(attention, device_str)
+
     logger.info(f"Loading OmniVoice: {model_identifier}")
-    logger.info(f"Device: {device_str}, Precision: {dtype}")
+    logger.info(f"Device: {device_str}, Precision: {dtype}, Attention: {attention} -> {attn_impl or 'default'}")
 
     # Determine device_map for OmniVoice
     if device_str == "cuda":
@@ -333,14 +384,26 @@ def load_model(
     else:
         device_map = "cpu"
 
+    # Build kwargs for from_pretrained
+    load_kwargs = {
+        "device_map": device_map,
+        "dtype": dtype,
+    }
+    if attn_impl is not None:
+        load_kwargs["attn_implementation"] = attn_impl
+
     # Load model using OmniVoice's from_pretrained
-    model = OmniVoice.from_pretrained(
-        model_identifier,
-        device_map=device_map,
-        dtype=dtype,
-    )
+    model = OmniVoice.from_pretrained(model_identifier, **load_kwargs)
 
     model.eval()
+
+    # Apply SageAttention monkey-patch if requested
+    if attention == "sage_attention" and device_str == "cuda":
+        try:
+            from .sage_attention_patch import set_sage_attention
+            set_sage_attention(model)
+        except Exception as e:
+            logger.warning(f"SageAttention patching failed: {e}. Using default attention.")
 
     # Apply VBAR/aimdo detection
     from .model_cache import apply_vbar_detection
@@ -348,16 +411,3 @@ def load_model(
 
     logger.info("OmniVoice model loaded successfully.")
     return model, None  # No tokenizer needed for OmniVoice
-
-
-def patch_attention(model, attention: str, device: str) -> None:
-    """Patch attention implementation (placeholder for future support)."""
-    if attention == "auto":
-        return
-
-    # TODO: Implement attention patching if OmniVoice supports it
-    if attention in ("sage_attention", "flash_attention"):
-        logger.warning(
-            f"{attention} is requested but OmniVoice uses its own attention. "
-            f"The attention setting may not have an effect."
-        )

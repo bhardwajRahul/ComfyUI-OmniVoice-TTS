@@ -10,7 +10,7 @@ Supports:
 import gc
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import torch
 
@@ -22,6 +22,12 @@ _cached_model: Any = None
 _cached_key: tuple = ()
 _keep_loaded: bool = False
 _offloaded: bool = False
+
+# Whisper ASR cache — kept separate from the OmniVoice model since
+# it's loaded by a different node and has its own lifecycle.
+_whisper_lock = threading.Lock()
+_cached_whisper: Any = None
+_cached_whisper_key: tuple = ()
 
 # Cancellation event for interrupt handling
 cancel_event: threading.Event = threading.Event()
@@ -149,6 +155,85 @@ def unload_model() -> None:
                 torch.cuda.synchronize()
             gc.collect()
             logger.info("Model unloaded and VRAM freed.")
+
+
+def unload_whisper() -> None:
+    """Fully unload the cached Whisper model from memory."""
+    global _cached_whisper, _cached_whisper_key
+    with _whisper_lock:
+        if _cached_whisper is not None:
+            logger.info("Unloading Whisper ASR model from memory...")
+            try:
+                _cached_whisper.to("cpu")
+            except Exception:
+                pass
+            del _cached_whisper
+            _cached_whisper = None
+            _cached_whisper_key = ()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+            logger.info("Whisper ASR model unloaded and VRAM freed.")
+
+
+def offload_whisper_to_cpu() -> None:
+    """Offload the cached Whisper model to CPU to free VRAM."""
+    with _whisper_lock:
+        if _cached_whisper is None:
+            return
+        try:
+            _cached_whisper.to("cpu")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
+            logger.info("Whisper ASR model offloaded to CPU. VRAM freed.")
+        except Exception as e:
+            logger.warning(f"Failed to offload Whisper model: {e}")
+
+
+def get_or_cache_whisper(whisper_input: dict | None, model_name: str, device: str, dtype: str) -> Any:
+    """Get or load a Whisper pipeline with caching.
+
+    Args:
+        whisper_input: Whisper dict from node input (None if not connected).
+            Must have "pipeline" and "model_name" keys.
+        model_name: Model name from dropdown (for cache key when no input).
+        device: Device to load on.
+        dtype: Model precision.
+
+    Returns:
+        Whisper pipeline or None.
+    """
+    if whisper_input is None:
+        return None
+
+    key = (whisper_input.get("model_name", model_name), device, dtype)
+
+    global _cached_whisper, _cached_whisper_key
+    with _whisper_lock:
+        if _cached_whisper is not None and _cached_whisper_key == key:
+            logger.info("Reusing cached Whisper ASR model.")
+            return _cached_whisper
+
+        # Settings changed — unload old
+        if _cached_whisper is not None:
+            logger.info("Whisper settings changed — unloading old Whisper model.")
+            try:
+                _cached_whisper.to("cpu")
+            except Exception:
+                pass
+            del _cached_whisper
+            _cached_whisper = None
+            _cached_whisper_key = ()
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        # Use the pipeline from the input (already loaded by Whisper Loader node)
+        _cached_whisper = whisper_input["pipeline"]
+        _cached_whisper_key = key
+        return _cached_whisper
 
 
 def apply_vbar_detection(model: Any, device_str: str) -> None:

@@ -17,9 +17,10 @@
 - **多说话人对白** — 使用 `[Speaker_N]:` 标签生成多人对话
 - **快速推理** — RTF低至0.025（比实时快40倍）
 - **非语言表达** — 内联标签如 `[laughter]`、`[sigh]`、`[sniff]`
+- **SageAttention支持** — 通过monkey-patch Qwen3Attention实现GPU优化注意力（仅CUDA，SM80+）
 - **自动下载** — 首次使用时自动从HuggingFace下载模型
 - **Whisper ASR缓存** — 预加载Whisper避免每次重新下载
-- **显存高效** — 自动CPU卸载，VBAR/aimdo集成
+- **显存高效** — 自动CPU卸载，VBAR/aimdo集成，智能缓存失效
 
 ## 安装
 
@@ -46,16 +47,16 @@ python install.py
 长文本语音合成，智能分句，可选声音克隆。
 
 | 参数 | 类型 | 默认值 | 说明 |
-|-----------|------|---------|-------------|
-| model | DROPDOWN | OmniVoice-bf16 | OmniVoice模型检查点 |
-| text | STRING | `"你好..."` | 要合成的文本 |
-| ref_text | STRING | "" | 参考音频转录文本（空=自动识别） |
-| steps | INT | 32 | 扩散步数（16=快，64=最佳） |
-| speed | FLOAT | 1.0 | 语速（>1=加快） |
+|------|------|--------|------|
+| model | COMBO | (自动) | OmniVoice模型检查点 |
+| text | STRING, 多行 | `"你好..."` | 要合成的文本 |
+| ref_text | STRING, 多行 | "" | 参考音频转录文本（空=自动识别） |
+| steps | INT | 32 | 扩散步数（4-64，16=快，64=最佳） |
+| speed | FLOAT | 1.0 | 语速（0.5-2.0，>1=加快） |
 | duration | FLOAT | 0.0 | 固定时长秒数（0=自动） |
-| device | DROPDOWN | auto | 计算设备 |
-| dtype | DROPDOWN | auto | 模型精度 |
-| attention | DROPDOWN | auto | 注意力实现 |
+| device | COMBO | auto | `auto`、`cuda`、`cpu`、`mps` |
+| dtype | COMBO | auto | `auto`、`bf16`、`fp16`、`fp32` |
+| attention | COMBO | auto | `auto`、`eager`、`sage_attention` |
 | seed | INT | 0 | 随机种子（0=随机） |
 | words_per_chunk | INT | 100 | 每块词数（0=不分块） |
 | keep_model_loaded | BOOLEAN | True | 保持模型加载 |
@@ -68,17 +69,17 @@ python install.py
 从参考音频克隆声音。
 
 | 参数 | 类型 | 默认值 | 说明 |
-|-----------|------|---------|-------------|
-| model | DROPDOWN | OmniVoice-bf16 | OmniVoice模型检查点 |
-| text | STRING | `"你好..."` | 要用克隆声音合成的文本 |
+|------|------|--------|------|
+| model | COMBO | (自动) | OmniVoice模型检查点 |
+| text | STRING, 多行 | `"你好..."` | 要用克隆声音合成的文本 |
 | ref_audio | AUDIO | 必填 | 参考音频（3-15秒） |
-| ref_text | STRING | "" | 转录文本（空=Whisper自动识别） |
-| steps | INT | 32 | 扩散步数（16=快，64=最佳） |
-| speed | FLOAT | 1.0 | 语速（>1=加快） |
+| ref_text | STRING, 多行 | "" | 转录文本（空=Whisper自动识别） |
+| steps | INT | 32 | 扩散步数（4-64） |
+| speed | FLOAT | 1.0 | 语速（0.5-2.0） |
 | duration | FLOAT | 0.0 | 固定时长秒数（0=自动） |
-| device | DROPDOWN | auto | 计算设备 |
-| dtype | DROPDOWN | auto | 模型精度 |
-| attention | DROPDOWN | auto | 注意力实现 |
+| device | COMBO | auto | `auto`、`cuda`、`cpu`、`mps` |
+| dtype | COMBO | auto | `auto`、`bf16`、`fp16`、`fp32` |
+| attention | COMBO | auto | `auto`、`eager`、`sage_attention` |
 | seed | INT | 0 | 随机种子（0=随机） |
 | keep_model_loaded | BOOLEAN | True | 保持模型加载 |
 
@@ -86,19 +87,19 @@ python install.py
 - `whisper_model` — 预加载的Whisper ASR模型
 
 ### 3. OmniVoice Voice Design TTS
-通过文字描述设计声音。
+通过文字描述设计声音。无需参考音频。
 
 | 参数 | 类型 | 默认值 | 说明 |
-|-----------|------|---------|-------------|
-| model | DROPDOWN | OmniVoice-bf16 | OmniVoice模型检查点 |
-| text | STRING | `"你好..."` | 要用设计声音合成的文本 |
-| voice_instruct | STRING | `"female, low pitch..."` | 声音属性描述 |
-| steps | INT | 32 | 扩散步数（16=快，64=最佳） |
-| speed | FLOAT | 1.0 | 语速（>1=加快） |
+|------|------|--------|------|
+| model | COMBO | (自动) | OmniVoice模型检查点 |
+| text | STRING, 多行 | `"你好..."` | 要用设计声音合成的文本 |
+| voice_instruct | STRING, 多行 | `"female, low pitch..."` | 声音属性描述 |
+| steps | INT | 32 | 扩散步数（4-64） |
+| speed | FLOAT | 1.0 | 语速（0.5-2.0） |
 | duration | FLOAT | 0.0 | 固定时长秒数（0=自动） |
-| device | DROPDOWN | auto | 计算设备 |
-| dtype | DROPDOWN | auto | 模型精度 |
-| attention | DROPDOWN | auto | 注意力实现 |
+| device | COMBO | auto | `auto`、`cuda`、`cpu`、`mps` |
+| dtype | COMBO | auto | `auto`、`bf16`、`fp16`、`fp32` |
+| attention | COMBO | auto | `auto`、`eager`、`sage_attention` |
 | seed | INT | 0 | 随机种子（0=随机） |
 | keep_model_loaded | BOOLEAN | True | 保持模型加载 |
 
@@ -106,70 +107,52 @@ python install.py
 使用 `[Speaker_N]:` 标签生成多说话人对白。
 
 | 参数 | 类型 | 默认值 | 说明 |
-|-----------|------|---------|-------------|
-| model | DROPDOWN | OmniVoice-bf16 | OmniVoice模型检查点 |
-| text | STRING | `"[Speaker_1]: 你好..."` | 多说话人文本 |
+|------|------|--------|------|
+| model | COMBO | (自动) | OmniVoice模型检查点 |
+| text | STRING, 多行 | `"[Speaker_1]: 你好..."` | 多说话人文本 |
 | num_speakers | INT | 2 | 说话人数量（2-10） |
 | steps | INT | 32 | 每个说话人的扩散步数 |
 | speed | FLOAT | 1.0 | 所有说话人的语速 |
 | pause_between_speakers | FLOAT | 0.3 | 说话人间静音秒数 |
-| device | DROPDOWN | auto | 计算设备 |
-| dtype | DROPDOWN | auto | 模型精度 |
-| attention | DROPDOWN | auto | 注意力实现 |
+| device | COMBO | auto | `auto`、`cuda`、`cpu`、`mps` |
+| dtype | COMBO | auto | `auto`、`bf16`、`fp16`、`fp32` |
+| attention | COMBO | auto | `auto`、`eager`、`sage_attention` |
 | seed | INT | 0 | 随机种子（0=随机） |
 | keep_model_loaded | BOOLEAN | True | 保持模型加载 |
-| speaker_1_audio | AUDIO | 必填 | 说话人1的参考音频 |
-| speaker_1_ref_text | STRING | "" | 说话人1参考音频的转录文本 |
-| ... | ... | ... | （说话人输入根据num_speakers自动显示） |
+| speaker_N_audio | AUDIO | 可选 | 说话人N的参考音频（1-10） |
+| speaker_N_ref_text | STRING | "" | 说话人N参考音频的转录文本 |
 
-**注意：** 在V2（旧版ComfyUI）中，还有`whisper_model`输入可用于预加载Whisper ASR。
+说话人输入根据 `num_speakers` 动态显示/隐藏（ComfyUI >= 0.8.1）。
 
 ### 5. OmniVoice Whisper Loader
 预加载Whisper ASR模型，避免每次重新下载。
 
 | 参数 | 类型 | 默认值 | 说明 |
-|-----------|------|---------|-------------|
-| model | DROPDOWN | whisper-large-v3-turbo | Whisper模型选择 |
-| device | DROPDOWN | auto | 设备：auto/cuda/cpu |
-| dtype | DROPDOWN | auto | 精度：auto/bf16/fp16/fp32 |
+|------|------|--------|------|
+| model | COMBO | (自动) | Whisper模型选择 |
+| device | COMBO | auto | `auto`、`cuda`、`cpu` |
+| dtype | COMBO | auto | `auto`、`bf16`、`fp16`、`fp32` |
 
-**dtype选项：**
-- `auto` — Ampere+显卡用bf16，旧显卡用fp16，CPU用fp32
-- `bf16` — bfloat16（需要Ampere+显卡）
-- `fp16` — float16
-- `fp32` — float32（最高精度，显存占用最大）
+**自动下载：** 选择带"(auto-download)"后缀的模型可在首次使用时自动下载。
 
-**自动下载：** 选择"whisper-large-v3-turbo (auto-download)"首次使用时自动下载。
+## 注意力后端
 
-## 模型存储
+OmniVoice的架构（Qwen3骨干）通过transformers支持的注意力后端有限。`attention`下拉菜单提供以下选项：
 
-```
-📂 ComfyUI/models/
-├── 📂 omnivoice/
-│   ├── 📂 OmniVoice/          (~4GB, fp32)
-│   └── 📂 OmniVoice-bf16/     (~2GB, bf16)
-└── 📂 audio_encoders/
-    ├── 📂 openai_whisper-large-v3-turbo/
-    ├── 📂 openai_whisper-large-v3/
-    └── 📂 openai_whisper-medium/
-```
+| 选项 | 实际行为 |
+|------|----------|
+| `auto` | OmniVoice默认（eager） |
+| `eager` | 标准eager注意力（始终可用） |
+| `sage_attention` | **Monkey-patch Qwen3Attention**为SageAttention CUDA内核。仅GPU，需要SM80+（Ampere+）。当存在注意力mask时回退到SDPA。安装：`pip install sageattention` |
 
-### OmniVoice模型
-| 模型 | 大小 | 说明 |
-|-------|------|-------------|
-| `OmniVoice` | ~4GB | 完整fp32模型 - 600+语言 |
-| `OmniVoice-bf16` | ~2GB | Bfloat16量化 - 显存更低 |
-
-### Whisper模型
-| 模型 | 显存 | 下载 |
-|-------|------|------|
-| whisper-large-v3-turbo | ~1.5GB | [下载](https://huggingface.co/openai/whisper-large-v3-turbo) |
-| whisper-large-v3 | ~3GB | [下载](https://huggingface.co/openai/whisper-large-v3) |
-| whisper-medium | ~1GB | [下载](https://huggingface.co/openai/whisper-medium) |
-| whisper-small | ~0.5GB | [下载](https://huggingface.co/openai/whisper-small) |
-| whisper-tiny | ~0.4GB | [下载](https://huggingface.co/openai/whisper-tiny) |
-
-模型首次使用时自动从HuggingFace下载。
+### SageAttention GPU兼容性
+| GPU架构 | 计算能力 | 使用的内核 |
+|---------|----------|-----------|
+| Blackwell (RTX 5090) | SM120 | FP8 |
+| Hopper (RTX 4090) | SM90 | FP8 |
+| Ada Lovelace (RTX 4070) | SM89 | FP8 |
+| Ampere (RTX 3090) | SM80 | FP16 |
+| SM80以下 | — | 不支持 |
 
 ## 多说话人用法
 
@@ -188,39 +171,81 @@ python install.py
 `voice_instruct` 参数用逗号分隔的属性：
 
 | 类别 | 选项 |
-|----------|---------|
-| **性别** | `male`（男）, `female`（女） |
-| **年龄** | `child`（儿童）, `young`（青年）, `middle-aged`（中年）, `elderly`（老年） |
-| **音调** | `very low pitch`, `low pitch`, `medium pitch`, `high pitch`, `very high pitch` |
+|------|------|
+| **性别** | `male`（男）、`female`（女） |
+| **年龄** | `child`（儿童）、`young`（青年）、`middle-aged`（中年）、`elderly`（老年） |
+| **音调** | `very low pitch`、`low pitch`、`medium pitch`、`high pitch`、`very high pitch` |
 | **风格** | `whisper`（耳语） |
-| **英语口音** | `american accent`, `british accent`, `australian accent` 等 |
-| **汉语方言** | `四川话`, `陕西话`, `广东话`, `东北话` 等 |
+| **英语口音** | `american accent`、`british accent`、`australian accent` 等 |
+| **汉语方言** | `四川话`、`陕西话`、`广东话`、`东北话`、`山东话`、`河南话`、`上海话`、`闽南话`、`客家话` 等 |
 
 **示例：** `"female, young, high pitch, british accent, whisper"`
 
 ## 非语言标签
 
 直接在文本中插入：
-- `[laughter]` — 笑声
-- `[sigh]` — 叹气
-- `[sniff]` — 吸鼻子
-- `[question-en]`, `[question-ah]`, `[question-oh]`, `[question-ei]`, `[question-yi]` — 疑问语气
-- `[surprise-ah]`, `[surprise-oh]`, `[surprise-wa]`, `[surprise-yo]` — 惊讶语气
-- `[dissatisfaction-hnn]` — 不满
-- `[confirmation-en]` — 确认
+
+| 标签 | 效果 |
+|------|------|
+| `[laughter]` | 笑声 |
+| `[sigh]` | 叹气 |
+| `[sniff]` | 吸鼻子 |
+| `[question-en]`、`[question-ah]`、`[question-oh]` | 疑问语气 |
+| `[surprise-ah]`、`[surprise-oh]`、`[surprise-wa]`、`[surprise-yo]` | 惊讶语气 |
+| `[dissatisfaction-hnn]` | 不满 |
+| `[confirmation-en]` | 确认 |
 
 **示例：**
 ```
 [laughter] 你真是把我逗乐了！[sigh] 我完全没想到会这样。
 ```
 
+## 模型存储
+
+```
+ComfyUI/models/
+  omnivoice/
+    OmniVoice/          (~4GB, fp32)
+    OmniVoice-bf16/     (~2GB, bf16)
+  audio_encoders/
+    openai_whisper-large-v3-turbo/
+    openai_whisper-large-v3/
+    openai_whisper-medium/
+```
+
+### OmniVoice模型
+| 模型 | 大小 | 说明 |
+|------|------|------|
+| `OmniVoice` | ~4GB | 完整fp32模型 - 600+语言 |
+| `OmniVoice-bf16` | ~2GB | Bfloat16量化 - 显存更低 |
+
+### Whisper模型
+| 模型 | 显存 | 下载 |
+|------|------|------|
+| whisper-large-v3-turbo | ~1.5GB | [下载](https://huggingface.co/openai/whisper-large-v3-turbo) |
+| whisper-large-v3 | ~3GB | [下载](https://huggingface.co/openai/whisper-large-v3) |
+| whisper-medium | ~1GB | [下载](https://huggingface.co/openai/whisper-medium) |
+| whisper-small | ~0.5GB | [下载](https://huggingface.co/openai/whisper-small) |
+| whisper-tiny | ~0.4GB | [下载](https://huggingface.co/openai/whisper-tiny) |
+
+模型首次使用时自动从HuggingFace下载。
+
 ## 显存需求
 
 | 精度 | 显存（约） |
-|-----------|---------------|
+|------|-----------|
 | fp32 | ~8-12 GB |
 | bf16/fp16 | ~4-6 GB |
 | CPU卸载 | ~2-4 GB |
+
+## 模型缓存
+
+节点会缓存已加载的模型以供复用。更改以下任何参数都会**强制完全清除缓存**（模型卸载 + GC + CUDA缓存刷新），即使 `keep_model_loaded` 为 `True`：
+
+- 模型选择
+- 设备
+- 精度（dtype）
+- 注意力后端
 
 ## 故障排除
 
@@ -237,6 +262,9 @@ export HF_ENDPOINT="https://hf-mirror.com"
 - 设置 `keep_model_loaded = False`
 - 使用 `dtype = fp16` 或 `bf16`
 - 使用 `device = cpu`（较慢但可用）
+
+### 安装后出现导入错误
+完全重启ComfyUI以重新加载Python模块。
 
 ## 致谢
 
