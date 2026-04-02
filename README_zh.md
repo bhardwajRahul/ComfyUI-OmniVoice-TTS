@@ -38,14 +38,7 @@ python install.py
 `omnivoice` pip包指定了 `torch==2.8.*` 作为依赖，这可能会将您的PyTorch降级为CPU版本，导致ComfyUI无法使用GPU加速。我们在 `install.py` 中通过 `--no-deps` 安装 `omnivoice` 来绕过这个问题，然后单独安装ComfyUI未提供的缺失依赖。
 
 ### 如果PyTorch被破坏
-如果其他包意外降级了您的PyTorch，使用以下命令恢复：
-```bash
-# 先检查您的CUDA版本：
-python -c "import torch; print(torch.version.cuda)"
-
-# 恢复PyTorch（将cu128替换为您的版本）：
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-```
+如果其他包意外降级了您的PyTorch，请参阅 [PyTorch兼容性矩阵](https://github.com/Saganaki22/ComfyUI-OmniVoice-TTS/blob/main/pytorch_compatibility_matrix.md) 获取与您环境匹配的恢复命令。
 
 ## 节点
 

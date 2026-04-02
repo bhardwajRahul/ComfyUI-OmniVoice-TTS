@@ -40,14 +40,7 @@ python install.py
 The `omnivoice` pip package specifies `torch==2.8.*` as a dependency, which can downgrade your PyTorch to a CPU-only version and break ComfyUI's GPU acceleration. We work around this by installing `omnivoice` with `--no-deps` in `install.py`, then separately installing only the missing dependencies that ComfyUI doesn't already provide.
 
 ### If PyTorch Gets Broken
-If another package accidentally downgrades your PyTorch, restore it with:
-```bash
-# Check your CUDA version first:
-python -c "import torch; print(torch.version.cuda)"
-
-# Restore PyTorch (replace cu128 with your version):
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-```
+If another package accidentally downgrades your PyTorch, see the [PyTorch Compatibility Matrix](https://github.com/Saganaki22/ComfyUI-OmniVoice-TTS/blob/main/pytorch_compatibility_matrix.md) for restore commands matching your setup.
 
 ## Nodes
 ### 1. OmniVoice Longform TTS
