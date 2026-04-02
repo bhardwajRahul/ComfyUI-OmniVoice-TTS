@@ -1,15 +1,14 @@
 [project]
 name = "ComfyUI-omnivoice-tts"
 description = "ComfyUI custom nodes for OmniVoice TTS | voice clone, multi-speaker, voice design, text-to-speech"
-version = "0.1.0"
+version = "0.1.1"
 license = {file = "LICENSE"}
-dependencies = [
-    "numpy",
-    "soundfile",
-    "librosa",
-    "huggingface-hub",
-    "omnivoice",
-]
+# BEST PRACTICE: Only list packages that:
+# 1. ComfyUI does NOT provide
+# 2. Do NOT depend on torch/numpy/transformers
+# NEVER list torch, torchaudio, transformers, numpy - ComfyUI manages these
+# NEVER list omnivoice here - it forces torch downgrade (uses --no-deps in install.py)
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/saganaki22/ComfyUI-OmniVoice-TTS"

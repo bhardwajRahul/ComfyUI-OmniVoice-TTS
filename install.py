@@ -1,97 +1,184 @@
 """Installation script for OmniVoice TTS custom node.
 
-This runs BEFORE __init__.py when the node is first installed via ComfyUI-Manager.
+BEST PRACTICES:
+1. NEVER touch torch/torchaudio/torchvision - ComfyUI manages these
+2. Use --no-deps for any package that might pull in torch dependencies
+3. Install packages individually for better error tracking
+4. Verify installation at the end
+5. Provide clear manual fix instructions if something goes wrong
 
-Strategy:
-1. Install omnivoice with --no-deps (won't touch existing packages)
-2. Install only the NEW packages that omnivoice needs but aren't already in ComfyUI
-3. Never touch torch/numpy/transformers/etc - ComfyUI already has them
+WHY THIS EXISTS:
+The omnivoice pip package specifies torch==2.8.* which downgrades PyTorch
+to CPU-only on many systems, breaking ComfyUI's GPU acceleration.
+We work around this by installing omnivoice with --no-deps.
 """
 
 import subprocess
 import sys
 
 
-def pip_install(spec):
-    """Install a package. Returns True on success."""
-    embedded = "python_embeded" in sys.executable
-    base = [sys.executable] + (["-s"] if embedded else [])
-
-    # Try pip first, then uv
-    cmd = base + ["-m", "pip", "install"] + spec.split()
-
-    # Check if uv is available as fallback
+def run_cmd(cmd, timeout=300):
+    """Run a command and return (success, stdout, stderr)."""
+    print(f"[OmniVoice] Running: {' '.join(cmd)}")
     try:
-        subprocess.check_output(
-            base + ["-m", "uv", "--version"],
-            stderr=subprocess.DEVNULL,
-            timeout=5,
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
-        cmd = base + ["-m", "uv", "pip", "install"] + spec.split()
-    except Exception:
-        pass
+        if result.returncode == 0:
+            print(f"[OmniVoice] Success")
+            return True, result.stdout, result.stderr
+        else:
+            print(f"[OmniVoice] Failed: {result.stderr}")
+            return False, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        print(f"[OmniVoice] Timeout after {timeout}s")
+        return False, "", "Timeout"
+    except Exception as e:
+        print(f"[OmniVoice] Error: {e}")
+        return False, "", str(e)
 
-    print(f"[OmniVoice Install] Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if result.returncode == 0:
-        print(f"[OmniVoice Install] Successfully installed: {spec}")
-        return True
-    print(f"[OmniVoice Install] Failed to install {spec}:\n{result.stderr}")
-    return False
 
-
-def check_package(import_name):
-    """Check if a package is already installed."""
+def is_installed(package_name):
+    """Check if a package is installed."""
     try:
-        __import__(import_name)
+        __import__(package_name)
         return True
     except ImportError:
         return False
 
 
-def main():
-    print("[OmniVoice Install] Starting installation...")
+def pip_install(package, no_deps=False, upgrade=False):
+    """Install a package with pip. Returns True on success."""
+    # Use uv if available (faster), otherwise pip
+    python = sys.executable
+    flags = []
+    if no_deps:
+        flags.append("--no-deps")
+    if upgrade:
+        flags.append("--upgrade")
 
-    # 1. Install omnivoice with --no-deps so it can't override anything
-    if not check_package("omnivoice"):
-        print("[OmniVoice Install] Installing omnivoice (with --no-deps to protect existing packages)...")
-        if not pip_install("omnivoice --no-deps"):
-            print("[OmniVoice Install] ERROR: Failed to install omnivoice")
-            return
-    else:
-        print("[OmniVoice Install] omnivoice already installed")
+    # Try uv first
+    cmd = [python, "-m", "uv", "pip", "install", package] + flags
+    success, _, _ = run_cmd(cmd)
+    if success:
+        return True
 
-    # 2. Install only the packages that omnivoice needs that ComfyUI might NOT have
-    # ComfyUI already has: torch, numpy, transformers, einops, safetensors, huggingface_hub, accelerate
-    # omnivoice may need these additional packages:
-    extra_deps = [
-        ("soundfile", "soundfile"),        # Audio file I/O
-        ("librosa", "librosa>=0.10.1"),    # Audio processing
-        ("alpha_clip", "alpha-clip"),      # May be needed by omnivoice
-        ("sentencepiece", "sentencepiece"), # Tokenization
-        ("jieba", "jieba"),                 # Chinese text segmentation
-    ]
+    # Fall back to pip
+    cmd = [python, "-m", "pip", "install", package] + flags
+    success, _, _ = run_cmd(cmd)
+    return success
 
-    for import_name, pip_spec in extra_deps:
-        if not check_package(import_name):
-            print(f"[OmniVoice Install] Installing {pip_spec}...")
-            pip_install(pip_spec)
-        else:
-            print(f"[OmniVoice Install] {import_name} already installed")
 
-    # 3. Verify torch is still CUDA build (sanity check)
+def check_torch():
+    """Check PyTorch installation. Returns (version, has_cuda)."""
     try:
         import torch
         version = torch.__version__
-        if "+cu" in version:
-            print(f"[OmniVoice Install] torch {version} (CUDA) - OK")
-        else:
-            print(f"[OmniVoice Install] WARNING: torch {version} is not CUDA build!")
-            print("[OmniVoice Install] ComfyUI may not work correctly.")
+        has_cuda = torch.cuda.is_available()
+        return version, has_cuda
     except ImportError:
-        print("[OmniVoice Install] WARNING: torch not found!")
+        return None, False
 
-    print("[OmniVoice Install] Installation complete!")
+
+def main():
+    print("=" * 60)
+    print("[OmniVoice] Installation starting...")
+    print("=" * 60)
+
+    # STEP 1: Verify PyTorch is healthy (we do NOT modify it)
+    print("")
+    print("[OmniVoice] Step 1: Checking PyTorch...")
+    torch_version, has_cuda = check_torch()
+
+    if torch_version is None:
+        print("[OmniVoice] ERROR: PyTorch is not installed!")
+        print("[OmniVoice] ComfyUI requires PyTorch. Please check your installation.")
+        return
+
+    if has_cuda:
+        print(f"[OmniVoice] PyTorch {torch_version} with CUDA - OK")
+    else:
+        print(f"[OmniVoice] WARNING: PyTorch {torch_version} - No CUDA detected")
+        print("[OmniVoice] Your GPU may not work in ComfyUI!")
+        print("[OmniVoice] See: https://pytorch.org/get-started/locally/")
+
+    # STEP 2: Install omnivoice with --no-deps (CRITICAL!)
+    # This prevents it from downgrading PyTorch
+    print("")
+    print("[OmniVoice] Step 2: Installing omnivoice...")
+    print("[OmniVoice] Using --no-deps to protect your PyTorch installation")
+
+    # First uninstall if exists (to ensure clean install with --no-deps)
+    run_cmd([sys.executable, "-m", "pip", "uninstall", "-y", "omnivoice"], timeout=60)
+
+    if pip_install("omnivoice", no_deps=True):
+        print("[OmniVoice] omnivoice installed successfully")
+    else:
+        print("[OmniVoice] ERROR: Failed to install omnivoice")
+        print("[OmniVoice] Try manually: pip install omnivoice --no-deps")
+
+    # STEP 3: Install additional packages that omnivoice needs
+    # Only install if not already present
+    print("")
+    print("[OmniVoice] Step 3: Installing additional dependencies...")
+
+    # These packages are NOT in ComfyUI by default and don't depend on torch
+    extra_packages = [
+        # (import_name, pip_name, description)
+        ("soundfile", "soundfile", "Audio file I/O"),
+        ("librosa", "librosa", "Audio processing"),
+        ("sentencepiece", "sentencepiece", "Tokenization"),
+        ("jieba", "jieba", "Chinese text segmentation"),
+    ]
+
+    for import_name, pip_name, description in extra_packages:
+        if is_installed(import_name):
+            print(f"[OmniVoice] {description} ({pip_name}) - already installed")
+        else:
+            print(f"[OmniVoice] Installing {description} ({pip_name})...")
+            pip_install(pip_name)
+
+    # STEP 4: Final verification
+    print("")
+    print("=" * 60)
+    print("[OmniVoice] Installation complete!")
+    print("=" * 60)
+    print("")
+    print("[OmniVoice] Verification:")
+
+    # Check omnivoice
+    if is_installed("omnivoice"):
+        print("  [OK] omnivoice")
+    else:
+        print("  [FAIL] omnivoice - not installed")
+
+    # Check torch (should be unchanged)
+    torch_version, has_cuda = check_torch()
+    if torch_version and has_cuda:
+        print(f"  [OK] PyTorch {torch_version} (CUDA)")
+    elif torch_version:
+        print(f"  [WARN] PyTorch {torch_version} (no CUDA)")
+    else:
+        print("  [FAIL] PyTorch - not installed")
+
+    print("")
+
+    # If torch lost CUDA, provide fix instructions
+    if torch_version and not has_cuda:
+        print("=" * 60)
+        print("[OmniVoice] IMPORTANT: PyTorch CUDA is not available!")
+        print("=" * 60)
+        print("")
+        print("Your PyTorch installation may have been changed by another package.")
+        print("To restore GPU support, reinstall PyTorch with CUDA:")
+        print("")
+        print("  pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128")
+        print("")
+        print("Or visit: https://pytorch.org/get-started/locally/")
+        print("")
 
 
 if __name__ == "__main__":
