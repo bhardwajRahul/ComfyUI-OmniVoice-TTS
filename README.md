@@ -2,6 +2,9 @@
 
 **OmniVoice TTS nodes for ComfyUI** — Zero-shot multilingual text-to-speech with voice cloning and voice design. Supports **600+ languages** with state-of-the-art quality.
 
+<img width="1801" height="1172" alt="Screenshot 2026-04-02 203949" src="https://github.com/user-attachments/assets/e1c9e07c-906d-4d7e-8983-014be3eda157" />
+
+
 ## Features
 
 - **600+ Languages** — Broadest language coverage among zero-shot TTS models
