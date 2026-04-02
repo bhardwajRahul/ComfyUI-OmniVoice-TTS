@@ -2,6 +2,13 @@
 
 **OmniVoice TTS ComfyUI节点** — 零样本多语言语音合成，支持声音克隆和声音设计。支持**600+种语言**，质量一流。
 
+[![OmniVoice Model](https://img.shields.io/badge/%F0%9F%A4%97%20OmniVoice%20Model-k2--fsa/OmniVoice-blue)](https://huggingface.co/k2-fsa/OmniVoice)
+[![OmniVoice-bf16](https://img.shields.io/badge/%F0%9F%A4%97%20OmniVoice--bf16-drbaph/OmniVoice--bf16-blue)](https://huggingface.co/drbaph/OmniVoice-bf16)
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Demo%20Space-OmniVoice-yellow)](https://huggingface.co/spaces/k2-fsa/OmniVoice)
+[![Demo](https://img.shields.io/badge/Demo%20Page-OmniVoice-green)](https://zhu-han.github.io/omnivoice/)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.00688-b31b1b)](https://arxiv.org/abs/2604.00688)
+[![GitHub](https://img.shields.io/badge/GitHub%20OmniVoice-k2--fsa/OmniVoice-black)](https://github.com/k2-fsa/OmniVoice)
+
 ## 特性
 
 - **600+种语言** — 零样本TTS模型中语言覆盖最广
@@ -34,6 +41,25 @@ git clone https://github.com/saganaki22/ComfyUI-OmniVoice-TTS.git
 cd ComfyUI-OmniVoice-TTS
 uv pip install -r requirements.txt
 ```
+
+### ⚠️ PyTorch CUDA降级警告
+`omnivoice` pip包可能在安装时**将PyTorch降级为CPU版本**，导致ComfyUI无法使用GPU。
+
+**此节点的自动处理：**
+首次加载时如果缺少 `omnivoice`，节点会尝试：
+1. 通过pip安装 `omnivoice`
+2. 重新安装原来的CUDA版PyTorch以恢复GPU支持
+
+**手动修复：**
+```bash
+# 检查CUDA版本（如cu118, cu121, cu128）
+python -c "import torch; print(torch.version.cuda)"
+
+# 重新安装对应CUDA版本的PyTorch（cu128示例）：
+pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+```
+
+**建议：** 安装此节点后，**重启ComfyUI**以确保CUDA PyTorch正确恢复。
 
 ## 节点
 
@@ -233,25 +259,6 @@ export HF_ENDPOINT="https://hf-mirror.com"
 - 使用 `dtype = fp16` 或 `bf16`
 - 使用 `device = cpu`（较慢但可用）
 
-### ⚠️ PyTorch CUDA降级警告
-`omnivoice` pip包可能在安装时**将PyTorch降级为CPU版本**，导致ComfyUI无法使用GPU。
-
-**此节点的自动处理：**
-首次加载时如果缺少 `omnivoice`，节点会尝试：
-1. 通过pip安装 `omnivoice`
-2. 重新安装原来的CUDA版PyTorch以恢复GPU支持
-
-**手动修复：**
-```bash
-# 检查CUDA版本（如cu118, cu121, cu128）
-python -c "import torch; print(torch.version.cuda)"
-
-# 重新安装对应CUDA版本的PyTorch（cu128示例）：
-pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://download.pytorch.org/whl/cu128
-```
-
-**建议：** 安装此节点后，**重启ComfyUI**以确保CUDA PyTorch正确恢复。
-
 ## 致谢
 
 - **OmniVoice** — [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) by k2-fsa — 原始fp32模型
@@ -271,4 +278,4 @@ pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://downl
 
 ## 许可证
 
-本自定义节点采用MIT许可证发布。OmniVoice模型有自己的许可证 — 详见 [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice)。
+本自定义节点采用Apache 2.0许可证发布。OmniVoice模型有自己的许可证 — 详见 [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice)。

@@ -2,6 +2,13 @@
 
 **OmniVoice TTS nodes for ComfyUI** — Zero-shot multilingual text-to-speech with voice cloning and voice design. Supports **600+ languages** with state-of-the-art quality.
 
+[![OmniVoice Model](https://img.shields.io/badge/%F0%9F%A4%97%20OmniVoice%20Model-k2--fsa/OmniVoice-blue)](https://huggingface.co/k2-fsa/OmniVoice)
+[![OmniVoice-bf16](https://img.shields.io/badge/%F0%9F%A4%97%20OmniVoice--bf16-drbaph/OmniVoice--bf16-blue)](https://huggingface.co/drbaph/OmniVoice-bf16)
+[![Hugging Face Space](https://img.shields.io/badge/%F0%9F%A4%97%20Demo%20Space-OmniVoice-yellow)](https://huggingface.co/spaces/k2-fsa/OmniVoice)
+[![Demo](https://img.shields.io/badge/Demo%20Page-OmniVoice-green)](https://zhu-han.github.io/omnivoice/)
+[![arXiv](https://img.shields.io/badge/arXiv-2604.00688-b31b1b)](https://arxiv.org/abs/2604.00688)
+[![GitHub](https://img.shields.io/badge/GitHub%20OmniVoice-k2--fsa/OmniVoice-black)](https://github.com/k2-fsa/OmniVoice)
+
 <img width="1801" height="1172" alt="Screenshot 2026-04-02 203949" src="https://github.com/user-attachments/assets/e1c9e07c-906d-4d7e-8983-014be3eda157" />
 
 
@@ -33,6 +40,26 @@ git clone https://github.com/saganaki22/ComfyUI-OmniVoice-TTS.git
 cd ComfyUI-OmniVoice-TTS
 uv pip install -r requirements.txt
 ```
+
+### ⚠️ PyTorch CUDA Downgrade Warning
+The `omnivoice` pip package may **downgrade PyTorch to a CPU-only version** during installation, removing CUDA support. This breaks GPU acceleration in ComfyUI.
+
+**What this node does automatically:**
+If `omnivoice` is missing on first load, the node attempts to:
+1. Install `omnivoice` via pip
+2. Re-install your original CUDA PyTorch version to restore GPU support
+
+**To fix manually if needed:**
+```bash
+# Check your CUDA version (e.g., cu118, cu121, cu128)
+python -c "import torch; print(torch.version.cuda)"
+
+# Re-install PyTorch with your CUDA version (example for cu128):
+pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+```
+
+**Recommendation:** After installing this node, **restart ComfyUI** to ensure CUDA PyTorch is restored properly.
+
 ## Nodes
 ### 1. OmniVoice Longform TTS
 Long-form text-to-speech with smart chunking and optional voice cloning.
@@ -213,24 +240,6 @@ Connect `OmniVoice Whisper Loader` to `whisper_model` input on Voice Clone TTS t
 - Use `device = cpu` (slower but works)
 ### Import errors after install
 Restart ComfyUI completely to reload Python modules.
-### ⚠️ PyTorch CUDA Downgrade Warning
-The `omnivoice` pip package may **downgrade PyTorch to a CPU-only version** during installation, removing CUDA support. This breaks GPU acceleration in ComfyUI.
-
-**What this node does automatically:**
-If `omnivoice` is missing on first load, the node attempts to:
-1. Install `omnivoice` via pip
-2. Re-install your original CUDA PyTorch version to restore GPU support
-
-**To fix manually if needed:**
-```bash
-# Check your CUDA version (e.g., cu118, cu121, cu128)
-python -c "import torch; print(torch.version.cuda)"
-
-# Re-install PyTorch with your CUDA version (example for cu128):
-pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://download.pytorch.org/whl/cu128
-```
-
-**Recommendation:** After installing this node, **restart ComfyUI** to ensure CUDA PyTorch is restored properly.
 ## Credits
 - **OmniVoice** — [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) by k2-fsa — Original fp32 model
 - **OmniVoice-bf16** — [drbaph/OmniVoice-bf16](https://huggingface.co/drbaph/OmniVoice-bf16) by drbaph — Bfloat16 quantized model
@@ -245,4 +254,4 @@ pip install torch==2.9.0+cu128 torchaudio==2.9.0+cu128 --index-url https://downl
 }
 ```
 ## License
-This custom node is released under the MIT License. The OmniVoice model has its own license — see [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) for details.
+This custom node is released under the Apache 2.0 License. The OmniVoice model has its own license — see [k2-fsa/OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) for details.
