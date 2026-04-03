@@ -192,6 +192,16 @@ if _V3:
                         tooltip="Diffusion steps per speaker.",
                     ),
                     IO.Float.Input(
+                        "guidance_scale",
+                        default=2.0, min=0.0, max=10.0, step=0.1,
+                        tooltip="Classifier-free guidance scale.",
+                    ),
+                    IO.Float.Input(
+                        "t_shift",
+                        default=0.1, min=0.0, max=1.0, step=0.01,
+                        tooltip="Time-step shift for noise schedule.",
+                    ),
+                    IO.Float.Input(
                         "speed",
                         default=1.0, min=0.5, max=2.0, step=0.1,
                         tooltip="Speaking speed for all speakers.",
@@ -215,6 +225,36 @@ if _V3:
                         "attention",
                         options=["auto", "eager", "sage_attention"],
                         tooltip="Attention implementation.",
+                    ),
+                    IO.Float.Input(
+                        "position_temperature",
+                        default=5.0, min=0.0, max=20.0, step=0.5,
+                        tooltip="Temperature for mask-position selection. 0 = greedy.",
+                    ),
+                    IO.Float.Input(
+                        "class_temperature",
+                        default=0.0, min=0.0, max=5.0, step=0.1,
+                        tooltip="Temperature for token sampling. 0 = greedy.",
+                    ),
+                    IO.Float.Input(
+                        "layer_penalty_factor",
+                        default=5.0, min=0.0, max=20.0, step=0.5,
+                        tooltip="Penalty on deeper codebook layers.",
+                    ),
+                    IO.Boolean.Input(
+                        "denoise",
+                        default=True,
+                        tooltip="Prepend denoise token for cleaner output.",
+                    ),
+                    IO.Boolean.Input(
+                        "preprocess_prompt",
+                        default=True,
+                        tooltip="Preprocess reference audio (remove silences).",
+                    ),
+                    IO.Boolean.Input(
+                        "postprocess_output",
+                        default=True,
+                        tooltip="Post-process audio (remove long silences).",
                     ),
                     IO.Int.Input(
                         "seed",
@@ -247,11 +287,19 @@ if _V3:
             model: str,
             text: str,
             steps: int,
+            guidance_scale: float,
+            t_shift: float,
             speed: float,
             pause_between_speakers: float,
             device: str,
             dtype: str,
             attention: str,
+            position_temperature: float,
+            class_temperature: float,
+            layer_penalty_factor: float,
+            denoise: bool,
+            preprocess_prompt: bool,
+            postprocess_output: bool,
             seed: int,
             keep_model_loaded: bool,
             num_speakers: dict,
@@ -304,6 +352,7 @@ if _V3:
             pbar = ProgressBar(total_steps) if _PBAR else None
             audio_turns = []
             sample_rate = OMNIVOICE_SAMPLE_RATE
+            result = None
 
             try:
                 for line_idx, (speaker_idx, line_text) in enumerate(dialogue_lines):
@@ -341,8 +390,16 @@ if _V3:
                     gen_kwargs = {
                         "text": line_text,
                         "num_step": steps,
+                        "guidance_scale": guidance_scale,
+                        "t_shift": t_shift,
                         "speed": speed,
                         "ref_audio": (ref_audio_tensor, OMNIVOICE_SAMPLE_RATE),
+                        "position_temperature": position_temperature,
+                        "class_temperature": class_temperature,
+                        "layer_penalty_factor": layer_penalty_factor,
+                        "denoise": denoise,
+                        "preprocess_prompt": preprocess_prompt,
+                        "postprocess_output": postprocess_output,
                     }
 
                     # Only add ref_text if provided - otherwise OmniVoice uses its own Whisper
@@ -380,9 +437,13 @@ if _V3:
             finally:
                 if not keep_model_loaded:
                     unload_model()
+                    unload_whisper()
                 else:
                     offload_model_to_cpu()
+                    offload_whisper_to_cpu()
 
+            if result is None:
+                raise RuntimeError("Generation failed — see logs above.")
             return IO.NodeOutput(result)
 
         @classmethod
@@ -491,6 +552,14 @@ else:
                         "default": 32, "min": 4, "max": 64, "step": 1,
                         "tooltip": "Diffusion steps per speaker.",
                     }),
+                    "guidance_scale": ("FLOAT", {
+                        "default": 2.0, "min": 0.0, "max": 10.0, "step": 0.1,
+                        "tooltip": "Classifier-free guidance scale.",
+                    }),
+                    "t_shift": ("FLOAT", {
+                        "default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01,
+                        "tooltip": "Time-step shift for noise schedule.",
+                    }),
                     "speed": ("FLOAT", {
                         "default": 1.0, "min": 0.5, "max": 2.0, "step": 0.1,
                         "tooltip": "Speaking speed for all speakers.",
@@ -502,6 +571,30 @@ else:
                     "device": (["auto", "cuda", "cpu", "mps"], {"default": "auto"}),
                     "dtype": (["auto", "bf16", "fp16", "fp32"], {"default": "auto"}),
                     "attention": (["auto", "eager", "sage_attention"], {"default": "auto"}),
+                    "position_temperature": ("FLOAT", {
+                        "default": 5.0, "min": 0.0, "max": 20.0, "step": 0.5,
+                        "tooltip": "Temperature for mask-position selection. 0 = greedy.",
+                    }),
+                    "class_temperature": ("FLOAT", {
+                        "default": 0.0, "min": 0.0, "max": 5.0, "step": 0.1,
+                        "tooltip": "Temperature for token sampling. 0 = greedy.",
+                    }),
+                    "layer_penalty_factor": ("FLOAT", {
+                        "default": 5.0, "min": 0.0, "max": 20.0, "step": 0.5,
+                        "tooltip": "Penalty on deeper codebook layers.",
+                    }),
+                    "denoise": ("BOOLEAN", {
+                        "default": True,
+                        "tooltip": "Prepend denoise token for cleaner output.",
+                    }),
+                    "preprocess_prompt": ("BOOLEAN", {
+                        "default": True,
+                        "tooltip": "Preprocess reference audio.",
+                    }),
+                    "postprocess_output": ("BOOLEAN", {
+                        "default": True,
+                        "tooltip": "Post-process generated audio.",
+                    }),
                     "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1}),
                     "keep_model_loaded": ("BOOLEAN", {"default": True}),
                 },
@@ -516,8 +609,11 @@ else:
 
         def generate(
             self,
-            model, text, num_speakers, steps, speed, pause_between_speakers,
-            device, dtype, attention, seed, keep_model_loaded, **kwargs
+            model, text, num_speakers, steps, guidance_scale, t_shift, speed,
+            pause_between_speakers, device, dtype, attention,
+            position_temperature, class_temperature, layer_penalty_factor,
+            denoise, preprocess_prompt, postprocess_output,
+            seed, keep_model_loaded, **kwargs
         ):
             cancel_event.clear()
             self._check_interrupt()
@@ -569,6 +665,7 @@ else:
 
             # Track which speakers need Whisper ( no ref_text provided)
             speakers_need_whisper = set()
+            result = None
 
             try:
                 for line_idx, (speaker_idx, line_text) in enumerate(dialogue_lines):
@@ -606,8 +703,16 @@ else:
                     gen_kwargs = {
                         "text": line_text,
                         "num_step": steps,
+                        "guidance_scale": guidance_scale,
+                        "t_shift": t_shift,
                         "speed": speed,
                         "ref_audio": (ref_audio_tensor, OMNIVOICE_SAMPLE_RATE),
+                        "position_temperature": position_temperature,
+                        "class_temperature": class_temperature,
+                        "layer_penalty_factor": layer_penalty_factor,
+                        "denoise": denoise,
+                        "preprocess_prompt": preprocess_prompt,
+                        "postprocess_output": postprocess_output,
                     }
 
                     # Only add ref_text if provided - otherwise let OmniVoice use Whisper
@@ -660,6 +765,8 @@ else:
                     offload_model_to_cpu()
                     offload_whisper_to_cpu()
 
+            if result is None:
+                raise RuntimeError("Generation failed — see logs above.")
             return (result,)
 
         def _get_model(

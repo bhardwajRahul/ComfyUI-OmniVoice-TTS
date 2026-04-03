@@ -157,16 +157,39 @@ def unload_model() -> None:
             logger.info("Model unloaded and VRAM freed.")
 
 
+def _whisper_to_device(pipe: Any, device: str) -> None:
+    """Move a HuggingFace pipeline to the target device.
+
+    Strategy: move the underlying model directly (most reliable across
+    transformers versions), then fall back to pipeline-level .to().
+    """
+    for attr in ("model", "_model"):
+        m = getattr(pipe, attr, None)
+        if m is not None and hasattr(m, "to"):
+            try:
+                m.to(device)
+                return
+            except Exception:
+                pass
+    # Fallback: pipeline-level .to()
+    try:
+        pipe.to(device)
+    except Exception:
+        pass
+
+
+def _whisper_to_cpu(pipe: Any) -> None:
+    """Move a HuggingFace pipeline's model to CPU."""
+    _whisper_to_device(pipe, "cpu")
+
+
 def unload_whisper() -> None:
     """Fully unload the cached Whisper model from memory."""
     global _cached_whisper, _cached_whisper_key
     with _whisper_lock:
         if _cached_whisper is not None:
             logger.info("Unloading Whisper ASR model from memory...")
-            try:
-                _cached_whisper.to("cpu")
-            except Exception:
-                pass
+            _whisper_to_cpu(_cached_whisper)
             del _cached_whisper
             _cached_whisper = None
             _cached_whisper_key = ()
@@ -183,7 +206,7 @@ def offload_whisper_to_cpu() -> None:
         if _cached_whisper is None:
             return
         try:
-            _cached_whisper.to("cpu")
+            _whisper_to_cpu(_cached_whisper)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
@@ -210,19 +233,22 @@ def get_or_cache_whisper(whisper_input: dict | None, model_name: str, device: st
 
     key = (whisper_input.get("model_name", model_name), device, dtype)
 
+    # Resolve target device so we can restore Whisper to it after CPU offload
+    from .loader import resolve_device
+    device_str, _ = resolve_device(device)
+
     global _cached_whisper, _cached_whisper_key
     with _whisper_lock:
         if _cached_whisper is not None and _cached_whisper_key == key:
-            logger.info("Reusing cached Whisper ASR model.")
+            # Ensure Whisper is on the target device (may have been offloaded to CPU)
+            _whisper_to_device(_cached_whisper, device_str)
+            logger.info(f"Reusing cached Whisper ASR model (on {device_str}).")
             return _cached_whisper
 
         # Settings changed — unload old
         if _cached_whisper is not None:
             logger.info("Whisper settings changed — unloading old Whisper model.")
-            try:
-                _cached_whisper.to("cpu")
-            except Exception:
-                pass
+            _whisper_to_cpu(_cached_whisper)
             del _cached_whisper
             _cached_whisper = None
             _cached_whisper_key = ()
@@ -230,9 +256,15 @@ def get_or_cache_whisper(whisper_input: dict | None, model_name: str, device: st
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        # Use the pipeline from the input (already loaded by Whisper Loader node)
-        _cached_whisper = whisper_input["pipeline"]
+        # Use the pipeline from the input (already loaded by Whisper Loader node).
+        # IMPORTANT: The same pipeline object is shared with ComfyUI's node
+        # output cache, so it may have been moved to CPU by a previous
+        # unload_whisper() call.  Restore it to the target device now.
+        pipe = whisper_input["pipeline"]
+        _whisper_to_device(pipe, device_str)
+        _cached_whisper = pipe
         _cached_whisper_key = key
+        logger.info(f"Whisper ASR model cached (on {device_str}).")
         return _cached_whisper
 
 
@@ -257,8 +289,11 @@ def _hook_comfy_model_management() -> None:
         _original = mm.soft_empty_cache
 
         def _patched_soft_empty_cache(*args, **kwargs):
-            # Only offload to CPU if keep_model_loaded is True, otherwise full unload
-            if _keep_loaded and _cached_model is not None:
+            # Read shared state inside the lock to avoid data races with
+            # ComfyUI's scheduler thread.
+            with _cache_lock:
+                should_offload = _keep_loaded and _cached_model is not None
+            if should_offload:
                 offload_model_to_cpu()
             else:
                 unload_model()

@@ -105,6 +105,26 @@ class OmniVoiceVoiceDesignTTS:
                         ),
                     },
                 ),
+                "guidance_scale": (
+                    "FLOAT",
+                    {
+                        "default": 2.0,
+                        "min": 0.0,
+                        "max": 10.0,
+                        "step": 0.1,
+                        "tooltip": "Classifier-free guidance scale. Higher = more aligned with text.",
+                    },
+                ),
+                "t_shift": (
+                    "FLOAT",
+                    {
+                        "default": 0.1,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": "Time-step shift for noise schedule. Smaller = emphasis on earlier steps.",
+                    },
+                ),
                 "speed": (
                     "FLOAT",
                     {
@@ -165,6 +185,50 @@ class OmniVoiceVoiceDesignTTS:
                         "tooltip": "Random seed. 0 = random.",
                     },
                 ),
+                "position_temperature": (
+                    "FLOAT",
+                    {
+                        "default": 5.0,
+                        "min": 0.0,
+                        "max": 20.0,
+                        "step": 0.5,
+                        "tooltip": "Temperature for mask-position selection. 0 = greedy, higher = more random.",
+                    },
+                ),
+                "class_temperature": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": 0.0,
+                        "max": 5.0,
+                        "step": 0.1,
+                        "tooltip": "Temperature for token sampling. 0 = greedy, higher = more random.",
+                    },
+                ),
+                "layer_penalty_factor": (
+                    "FLOAT",
+                    {
+                        "default": 5.0,
+                        "min": 0.0,
+                        "max": 20.0,
+                        "step": 0.5,
+                        "tooltip": "Penalty on deeper codebook layers, encouraging lower layers to unmask first.",
+                    },
+                ),
+                "denoise": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Prepend denoise token to input for cleaner output.",
+                    },
+                ),
+                "postprocess_output": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Post-process generated audio (remove long silences).",
+                    },
+                ),
                 "keep_model_loaded": (
                     "BOOLEAN",
                     {
@@ -193,12 +257,19 @@ class OmniVoiceVoiceDesignTTS:
         text: str,
         voice_instruct: str,
         steps: int,
+        guidance_scale: float,
+        t_shift: float,
         speed: float,
         duration: float,
         device: str,
         dtype: str,
         attention: str,
         seed: int,
+        position_temperature: float,
+        class_temperature: float,
+        layer_penalty_factor: float,
+        denoise: bool,
+        postprocess_output: bool,
         keep_model_loaded: bool,
     ) -> Tuple[dict]:
         cancel_event.clear()
@@ -235,13 +306,21 @@ class OmniVoiceVoiceDesignTTS:
 
         self._check_interrupt()
 
+        result = None
         try:
             # Build kwargs for generate
             gen_kwargs = {
                 "text": text,
                 "instruct": voice_instruct,
                 "num_step": steps,
+                "guidance_scale": guidance_scale,
+                "t_shift": t_shift,
                 "speed": speed,
+                "position_temperature": position_temperature,
+                "class_temperature": class_temperature,
+                "layer_penalty_factor": layer_penalty_factor,
+                "denoise": denoise,
+                "postprocess_output": postprocess_output,
             }
             if duration > 0:
                 gen_kwargs["duration"] = duration
@@ -273,6 +352,8 @@ class OmniVoiceVoiceDesignTTS:
             else:
                 offload_model_to_cpu()
 
+        if result is None:
+            raise RuntimeError("Generation failed — see logs above.")
         return (result,)
 
     def _get_model(

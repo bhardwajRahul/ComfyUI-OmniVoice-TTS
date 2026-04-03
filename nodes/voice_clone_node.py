@@ -7,7 +7,6 @@ in that voice. Supports 600+ languages with high-quality zero-shot voice cloning
 import logging
 from typing import Tuple
 
-import numpy as np
 import torch
 
 from .loader import (
@@ -17,7 +16,6 @@ from .loader import (
     comfy_audio_to_numpy,
     resolve_device,
 )
-from .omnivoice_tts import _smart_chunk_text
 from .model_cache import (
     cancel_event,
     get_cache_key,
@@ -114,6 +112,26 @@ class OmniVoiceVoiceCloneTTS:
                         ),
                     },
                 ),
+                "guidance_scale": (
+                    "FLOAT",
+                    {
+                        "default": 2.0,
+                        "min": 0.0,
+                        "max": 10.0,
+                        "step": 0.1,
+                        "tooltip": "Classifier-free guidance scale. Higher = more aligned with text.",
+                    },
+                ),
+                "t_shift": (
+                    "FLOAT",
+                    {
+                        "default": 0.1,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": "Time-step shift for noise schedule. Smaller = emphasis on earlier steps.",
+                    },
+                ),
                 "speed": (
                     "FLOAT",
                     {
@@ -174,6 +192,57 @@ class OmniVoiceVoiceCloneTTS:
                         "tooltip": "Random seed. 0 = random.",
                     },
                 ),
+                "position_temperature": (
+                    "FLOAT",
+                    {
+                        "default": 5.0,
+                        "min": 0.0,
+                        "max": 20.0,
+                        "step": 0.5,
+                        "tooltip": "Temperature for mask-position selection. 0 = greedy, higher = more random.",
+                    },
+                ),
+                "class_temperature": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": 0.0,
+                        "max": 5.0,
+                        "step": 0.1,
+                        "tooltip": "Temperature for token sampling. 0 = greedy, higher = more random.",
+                    },
+                ),
+                "layer_penalty_factor": (
+                    "FLOAT",
+                    {
+                        "default": 5.0,
+                        "min": 0.0,
+                        "max": 20.0,
+                        "step": 0.5,
+                        "tooltip": "Penalty on deeper codebook layers, encouraging lower layers to unmask first.",
+                    },
+                ),
+                "denoise": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Prepend denoise token to input for cleaner output.",
+                    },
+                ),
+                "preprocess_prompt": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Preprocess voice-clone prompt audio (remove silences, add punctuation).",
+                    },
+                ),
+                "postprocess_output": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "Post-process generated audio (remove long silences).",
+                    },
+                ),
                 "keep_model_loaded": (
                     "BOOLEAN",
                     {
@@ -181,19 +250,6 @@ class OmniVoiceVoiceCloneTTS:
                         "tooltip": (
                             "Keep model loaded between runs. "
                             "Model is automatically offloaded to CPU after generation."
-                        ),
-                    },
-                ),
-                "words_per_chunk": (
-                    "INT",
-                    {
-                        "default": 100,
-                        "min": 0,
-                        "max": 500,
-                        "step": 10,
-                        "tooltip": (
-                            "Words per chunk for long text. 0 = no chunking. "
-                            "Chunks split at sentence boundaries, not mid-word."
                         ),
                     },
                 ),
@@ -228,13 +284,20 @@ class OmniVoiceVoiceCloneTTS:
         ref_audio: dict,
         ref_text: str,
         steps: int,
+        guidance_scale: float,
+        t_shift: float,
         speed: float,
         duration: float,
         device: str,
         dtype: str,
         attention: str,
         seed: int,
-        words_per_chunk: int,
+        position_temperature: float,
+        class_temperature: float,
+        layer_penalty_factor: float,
+        denoise: bool,
+        preprocess_prompt: bool,
+        postprocess_output: bool,
         keep_model_loaded: bool,
         whisper_model: dict = None,
     ) -> Tuple[dict]:
@@ -251,6 +314,7 @@ class OmniVoiceVoiceCloneTTS:
 
         pbar = ProgressBar(4) if _PBAR else None
 
+        result = None
         # Convert reference audio from ComfyUI format to numpy at 24kHz
         logger.info("Processing reference audio...")
         ref_audio_np, ref_sr = comfy_audio_to_numpy(ref_audio, target_sr=OMNIVOICE_SAMPLE_RATE)
@@ -295,52 +359,35 @@ class OmniVoiceVoiceCloneTTS:
 
         self._check_interrupt()
 
-        # Smart chunk long text at sentence boundaries
-        chunks = _smart_chunk_text(text, words_per_chunk)
-        if len(chunks) > 1:
-            logger.info(f"Long text detected — splitting into {len(chunks)} chunks at sentence boundaries")
-
-        total_chunks = len(chunks)
-        pbar = ProgressBar(total_chunks + 1) if _PBAR else None
-        audio_chunks = []
-
+        result = None
         try:
-            for chunk_idx, chunk_text in enumerate(chunks):
-                self._check_interrupt()
+            gen_kwargs = {
+                "text": text,
+                "num_step": steps,
+                "guidance_scale": guidance_scale,
+                "t_shift": t_shift,
+                "speed": speed,
+                "ref_audio": (ref_audio_tensor, OMNIVOICE_SAMPLE_RATE),
+                "position_temperature": position_temperature,
+                "class_temperature": class_temperature,
+                "layer_penalty_factor": layer_penalty_factor,
+                "denoise": denoise,
+                "preprocess_prompt": preprocess_prompt,
+                "postprocess_output": postprocess_output,
+            }
+            if ref_text.strip():
+                gen_kwargs["ref_text"] = ref_text.strip()
+            if duration > 0:
+                gen_kwargs["duration"] = duration
 
-                if len(chunks) > 1:
-                    logger.info(f"  Chunk {chunk_idx + 1}/{len(chunks)}: {chunk_text[:50]}{'...' if len(chunk_text) > 50 else ''}")
+            with torch.no_grad():
+                audio_list = omnivoice_model.generate(**gen_kwargs)
 
-                gen_kwargs = {
-                    "text": chunk_text,
-                    "num_step": steps,
-                    "speed": speed,
-                    "ref_audio": (ref_audio_tensor, OMNIVOICE_SAMPLE_RATE),
-                }
-                if ref_text.strip():
-                    gen_kwargs["ref_text"] = ref_text.strip()
-                if duration > 0:
-                    gen_kwargs["duration"] = duration
-
-                with torch.no_grad():
-                    audio_list = omnivoice_model.generate(**gen_kwargs)
-
-                audio_np = audio_list[0].squeeze(0).cpu().numpy()
-                audio_chunks.append(audio_np)
-
-                if pbar:
-                    pbar.update_absolute(chunk_idx + 2, total_chunks + 1)
-
-            # Concatenate all chunks
-            if len(audio_chunks) == 1:
-                audio_out = audio_chunks[0]
-            else:
-                audio_out = np.concatenate(audio_chunks, axis=0)
-
-            result = numpy_audio_to_comfy(audio_out, OMNIVOICE_SAMPLE_RATE)
+            audio_np = audio_list[0].squeeze(0).cpu().numpy()
+            result = numpy_audio_to_comfy(audio_np, OMNIVOICE_SAMPLE_RATE)
 
             logger.info(
-                f"Generated {len(audio_out) / OMNIVOICE_SAMPLE_RATE:.2f}s of audio "
+                f"Generated {len(audio_np) / OMNIVOICE_SAMPLE_RATE:.2f}s of audio "
                 f"at {OMNIVOICE_SAMPLE_RATE}Hz in cloned voice"
             )
 
@@ -352,6 +399,8 @@ class OmniVoiceVoiceCloneTTS:
                 offload_model_to_cpu()
                 offload_whisper_to_cpu()
 
+        if result is None:
+            raise RuntimeError("Generation failed — see logs above.")
         return (result,)
 
     def _get_model(

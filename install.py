@@ -84,6 +84,16 @@ def check_torch():
 
 
 def main():
+    # Early exit if omnivoice is already installed and torch has CUDA
+    try:
+        import omnivoice  # noqa: F401
+        import torch
+        if torch.cuda.is_available():
+            print("[OmniVoice] Already installed correctly. Skipping.")
+            return
+    except ImportError:
+        pass
+
     print("=" * 60)
     print("[OmniVoice] Installation starting...")
     print("=" * 60)
@@ -134,12 +144,17 @@ def main():
         ("jieba", "jieba", "Chinese text segmentation"),
     ]
 
+    # Packages safe to install with --no-deps (no transitive deps that
+    # aren't already in a standard ComfyUI environment).
+    no_deps_packages = {"soundfile", "sentencepiece", "jieba"}
+
     for import_name, pip_name, description in extra_packages:
         if is_installed(import_name):
             print(f"[OmniVoice] {description} ({pip_name}) - already installed")
         else:
             print(f"[OmniVoice] Installing {description} ({pip_name})...")
-            pip_install(pip_name)
+            use_no_deps = pip_name in no_deps_packages
+            pip_install(pip_name, no_deps=use_no_deps)
 
     # STEP 4: Final verification
     print("")

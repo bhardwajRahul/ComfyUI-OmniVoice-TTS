@@ -128,7 +128,9 @@ def sage_attention_forward(
 
         # SageAttention handles GQA (num_qo_heads divisible by num_kv_heads)
         # internally, so we do NOT repeat_kv here.
-        is_causal = self.sliding_window is None
+        # TTS generation is always causal — sliding window attention is still
+        # causal (tokens attend only to past tokens within the window).
+        is_causal = True
 
         attn_output = SAGE_ATTENTION_FUNCTION(
             q,

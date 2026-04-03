@@ -29,12 +29,13 @@ def _get_audio_encoders_dir() -> Path:
     return base
 
 
-# Set HuggingFace cache directory globally on import
-# This makes OmniVoice's internal ASR use ComfyUI's cache folder
+# Only set HuggingFace cache environment variables if they are not already
+# configured by the user or another plugin. This avoids hijacking cache paths
+# for unrelated nodes that also use transformers/huggingface_hub.
 _CACHE_DIR = str(_get_audio_encoders_dir())
-os.environ["TRANSFORMERS_CACHE"] = _CACHE_DIR
-os.environ["HF_HOME"] = _CACHE_DIR
-os.environ["HUGGINGFACE_HUB_CACHE"] = _CACHE_DIR
+for _var in ("TRANSFORMERS_CACHE", "HF_HOME", "HUGGINGFACE_HUB_CACHE"):
+    if _var not in os.environ:
+        os.environ[_var] = _CACHE_DIR
 logger.info(f"HuggingFace cache set to: {_CACHE_DIR}")
 
 # Default Whisper model for auto-download
@@ -81,26 +82,19 @@ def _is_whisper_downloaded(repo_id: str) -> bool:
 def get_whisper_model_names() -> list[str]:
     """Get list of available Whisper models from folder + auto-download options."""
     names = []
+
+    # Always include auto-download options (keeps saved workflow values valid
+    # even after download — avoids "node not found" on second run)
+    for display_name in POPULAR_WHISPER_MODELS:
+        names.append(display_name)
+
+    # Add local models from the folder (user-added or previously downloaded)
     base = _get_audio_encoders_dir()
+    known_safe_names = {repo_id.replace("/", "_") for repo_id in POPULAR_WHISPER_MODELS.values()}
 
-    # Track which local models are known HF models (to avoid showing both)
-    downloaded_hf_models = set()
-
-    # Add auto-download options only if not already downloaded
-    for display_name, repo_id in POPULAR_WHISPER_MODELS.items():
-        if _is_whisper_downloaded(repo_id):
-            # Model exists locally - add it by its folder name (without auto-download suffix)
-            safe_name = repo_id.replace("/", "_")
-            downloaded_hf_models.add(safe_name)
-            names.append(safe_name)
-        else:
-            # Not downloaded - show auto-download option
-            names.append(display_name)
-
-    # Add any other local models in the folder (user-added, not from our list)
     try:
         for entry in sorted(base.iterdir()):
-            if entry.is_dir() and entry.name not in downloaded_hf_models:
+            if entry.is_dir() and entry.name not in known_safe_names:
                 has_config = (entry / "config.json").is_file()
                 has_model = any(
                     f.suffix in {".safetensors", ".bin", ".pt", ".pth"}

@@ -115,12 +115,12 @@ def get_model_names() -> list[str]:
     base = _get_models_base()
     names = []
 
-    # Add HF models with auto-download suffix if not present
+    # Add HF models — always keep the "(auto download)" entry so saved
+    # workflow values never break after download (mirrors whisper_loader.py).
     for model_name in HF_MODELS.keys():
+        names.append(f"{model_name}{_AUTO_DOWNLOAD_SUFFIX}")
         if _is_model_downloaded(model_name):
             names.append(model_name)
-        else:
-            names.append(f"{model_name}{_AUTO_DOWNLOAD_SUFFIX}")
 
     # Add any local models in the folder
     try:
@@ -219,9 +219,7 @@ def numpy_audio_to_comfy(audio_np: np.ndarray, sample_rate: int) -> dict:
     elif audio_np.ndim == 2:
         # (channels, samples) -> (1, channels, samples)
         audio_np = audio_np[np.newaxis, :, :]
-    else:
-        # Already (batch, channels, samples) - squeeze to expected shape
-        audio_np = audio_np[np.newaxis, :, :]
+    # else: already (batch, channels, samples) — pass through as-is
 
     waveform = torch.from_numpy(audio_np).contiguous()
     return {"waveform": waveform, "sample_rate": sample_rate}

@@ -12,7 +12,7 @@ Model weights are auto-downloaded from HuggingFace on first inference.
 Supports 600+ languages with zero-shot voice cloning and voice design.
 """
 
-__version__ = "0.1.5"
+__version__ = "0.2.0"
 
 import logging
 import sys
@@ -43,7 +43,7 @@ def _check_dependencies() -> bool:
     except ImportError:
         logger.error("=" * 60)
         logger.error(" OmniVoice not installed!")
-        logger.error(" Run: pip install omnivoice")
+        logger.error(" Run: pip install --no-deps omnivoice")
         logger.error(" Or restart ComfyUI to trigger install.py")
         logger.error("=" * 60)
         return False
@@ -96,23 +96,16 @@ if _check_dependencies():
     except Exception as e:
         logger.error(f"Failed to register nodes: {e}", exc_info=True)
 else:
-    # Fallback: try to install missing packages
+    # Fallback: try to install omnivoice with --no-deps to avoid
+    # clobbering the user's torch/torchvision/torchaudio stack.
     try:
         import subprocess
-        import sys
 
-        logger.warning("omnivoice not found — attempting to install...")
-        pip_cmd = [sys.executable, "-m", "pip", "install", "omnivoice"]
+        logger.warning("omnivoice not found — attempting to install with --no-deps ...")
+        pip_cmd = [sys.executable, "-m", "pip", "install", "--no-deps", "omnivoice"]
         result = subprocess.run(pip_cmd, capture_output=True, text=True, timeout=120)
 
         if result.returncode == 0:
-            # Restore CUDA torch
-            restore_cmd = [
-                sys.executable, "-m", "pip", "install",
-                "torch==2.9.0+cu128", "torchaudio==2.9.0+cu128",
-                "--index-url", "https://download.pytorch.org/whl/cu128"
-            ]
-            subprocess.run(restore_cmd, capture_output=True, text=True, timeout=300)
             logger.warning("OmniVoice installed — RESTART ComfyUI to complete setup.")
         else:
             logger.error(f"Failed to install omnivoice: {result.stderr}")

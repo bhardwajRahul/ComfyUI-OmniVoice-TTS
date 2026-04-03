@@ -57,6 +57,8 @@ Long-form text-to-speech with smart chunking and optional voice cloning.
 | text | STRING, multiline | `"Hello!..."` | Text to synthesize |
 | ref_text | STRING, multiline | "" | Reference audio transcript (empty=auto-detect) |
 | steps | INT | 32 | Diffusion steps (4-64, 16=faster, 64=best) |
+| guidance_scale | FLOAT | 2.0 | Classifier-free guidance scale (0-10) |
+| t_shift | FLOAT | 0.1 | Time-step shift for noise schedule (0-1) |
 | speed | FLOAT | 1.0 | Speaking speed (0.5-2.0, >1=faster) |
 | duration | FLOAT | 0.0 | Fixed duration in seconds (0=auto) |
 | device | COMBO | auto | `auto`, `cuda`, `cpu`, `mps` |
@@ -64,7 +66,13 @@ Long-form text-to-speech with smart chunking and optional voice cloning.
 | attention | COMBO | auto | `auto`, `eager`, `sage_attention` |
 | seed | INT | 0 | Random seed (0=random) |
 | words_per_chunk | INT | 100 | Words per chunk (0=no chunking) |
-| keep_model_loaded | BOOLEAN | True | Keep model in memory |
+| position_temperature | FLOAT | 5.0 | Mask-position temperature (0=greedy, higher=more random) |
+| class_temperature | FLOAT | 0.0 | Token sampling temperature (0=greedy) |
+| layer_penalty_factor | FLOAT | 5.0 | Penalty on deeper codebook layers |
+| denoise | BOOLEAN | True | Prepend denoise token for cleaner output |
+| preprocess_prompt | BOOLEAN | True | Preprocess reference audio (remove silences) |
+| postprocess_output | BOOLEAN | True | Post-process generated audio (remove long silences) |
+| keep_model_loaded | BOOLEAN | True | Keep model in memory (offloads to CPU between runs) |
 
 **Optional Inputs:**
 - `ref_audio` — Reference audio for voice cloning (3-15s optimal)
@@ -80,12 +88,20 @@ Clone a voice from reference audio.
 | ref_audio | AUDIO | required | Reference audio (3-15s) |
 | ref_text | STRING, multiline | "" | Transcript (empty=auto-transcribe with Whisper) |
 | steps | INT | 32 | Diffusion steps (4-64) |
+| guidance_scale | FLOAT | 2.0 | Classifier-free guidance scale (0-10) |
+| t_shift | FLOAT | 0.1 | Time-step shift for noise schedule (0-1) |
 | speed | FLOAT | 1.0 | Speaking speed (0.5-2.0) |
 | duration | FLOAT | 0.0 | Fixed duration in seconds (0=auto) |
 | device | COMBO | auto | `auto`, `cuda`, `cpu`, `mps` |
 | dtype | COMBO | auto | `auto`, `bf16`, `fp16`, `fp32` |
 | attention | COMBO | auto | `auto`, `eager`, `sage_attention` |
 | seed | INT | 0 | Random seed (0=random) |
+| position_temperature | FLOAT | 5.0 | Mask-position temperature (0=greedy) |
+| class_temperature | FLOAT | 0.0 | Token sampling temperature (0=greedy) |
+| layer_penalty_factor | FLOAT | 5.0 | Penalty on deeper codebook layers |
+| denoise | BOOLEAN | True | Prepend denoise token for cleaner output |
+| preprocess_prompt | BOOLEAN | True | Preprocess reference audio (remove silences) |
+| postprocess_output | BOOLEAN | True | Post-process generated audio (remove long silences) |
 | keep_model_loaded | BOOLEAN | True | Keep model in memory |
 
 **Optional Input:**
@@ -98,14 +114,21 @@ Design voices from text descriptions. No reference audio needed.
 |-----------|------|---------|-------------|
 | model | COMBO | (auto) | OmniVoice model checkpoint |
 | text | STRING, multiline | `"Hello!..."` | Text to synthesize in designed voice |
-| voice_instruct | STRING, multiline | `"female, low pitch..."` | Voice attributes |
+| voice_instruct | STRING, multiline | `"female, low pitch..."` | Voice attributes (comma-separated) |
 | steps | INT | 32 | Diffusion steps (4-64) |
+| guidance_scale | FLOAT | 2.0 | Classifier-free guidance scale (0-10) |
+| t_shift | FLOAT | 0.1 | Time-step shift for noise schedule (0-1) |
 | speed | FLOAT | 1.0 | Speaking speed (0.5-2.0) |
 | duration | FLOAT | 0.0 | Fixed duration in seconds (0=auto) |
 | device | COMBO | auto | `auto`, `cuda`, `cpu`, `mps` |
 | dtype | COMBO | auto | `auto`, `bf16`, `fp16`, `fp32` |
 | attention | COMBO | auto | `auto`, `eager`, `sage_attention` |
 | seed | INT | 0 | Random seed (0=random) |
+| position_temperature | FLOAT | 5.0 | Mask-position temperature (0=greedy) |
+| class_temperature | FLOAT | 0.0 | Token sampling temperature (0=greedy) |
+| layer_penalty_factor | FLOAT | 5.0 | Penalty on deeper codebook layers |
+| denoise | BOOLEAN | True | Prepend denoise token for cleaner output |
+| postprocess_output | BOOLEAN | True | Post-process generated audio (remove long silences) |
 | keep_model_loaded | BOOLEAN | True | Keep model in memory |
 
 ### 4. OmniVoice Multi-Speaker TTS
@@ -115,13 +138,21 @@ Generate dialogue between multiple speakers using `[Speaker_N]:` tags.
 |-----------|------|---------|-------------|
 | model | COMBO | (auto) | OmniVoice model checkpoint |
 | text | STRING, multiline | `"[Speaker_1]: Hello..."` | Multi-speaker text |
-| num_speakers | INT | 2 | Number of speakers (2-10) |
+| num_speakers | DYNAMIC | 2 | Number of speakers (2-10, dynamic inputs) |
 | steps | INT | 32 | Diffusion steps per speaker |
+| guidance_scale | FLOAT | 2.0 | Classifier-free guidance scale (0-10) |
+| t_shift | FLOAT | 0.1 | Time-step shift for noise schedule (0-1) |
 | speed | FLOAT | 1.0 | Speaking speed for all speakers |
 | pause_between_speakers | FLOAT | 0.3 | Silence between speakers (seconds) |
 | device | COMBO | auto | `auto`, `cuda`, `cpu`, `mps` |
 | dtype | COMBO | auto | `auto`, `bf16`, `fp16`, `fp32` |
 | attention | COMBO | auto | `auto`, `eager`, `sage_attention` |
+| position_temperature | FLOAT | 5.0 | Mask-position temperature (0=greedy) |
+| class_temperature | FLOAT | 0.0 | Token sampling temperature (0=greedy) |
+| layer_penalty_factor | FLOAT | 5.0 | Penalty on deeper codebook layers |
+| denoise | BOOLEAN | True | Prepend denoise token for cleaner output |
+| preprocess_prompt | BOOLEAN | True | Preprocess reference audio |
+| postprocess_output | BOOLEAN | True | Post-process generated audio |
 | seed | INT | 0 | Random seed (0=random) |
 | keep_model_loaded | BOOLEAN | True | Keep model in memory |
 | speaker_N_audio | AUDIO | optional | Reference audio for speaker N (1-10) |
@@ -139,6 +170,24 @@ Pre-load Whisper ASR model for auto-transcription. Avoid re-downloading on each 
 | dtype | COMBO | auto | `auto`, `bf16`, `fp16`, `fp32` |
 
 **Auto-download:** Select models with "(auto-download)" suffix to download on first use.
+
+## Generation Parameters Guide
+
+These parameters control the diffusion-based audio generation process:
+
+| Parameter | What it does | Tips |
+|-----------|-------------|------|
+| `steps` | Number of iterative unmasking steps | 16 = faster, 32 = balanced, 64 = best quality |
+| `guidance_scale` | Classifier-free guidance strength | Higher = more text-aligned; 2.0 is default |
+| `t_shift` | Time-step shift for noise schedule | Smaller values emphasise earlier decoding steps |
+| `speed` | Speaking speed factor | >1.0 = faster, <1.0 = slower |
+| `duration` | Fixed output length in seconds | Overrides speed when set; 0 = automatic |
+| `position_temperature` | Randomness in mask-position selection | 0 = greedy (deterministic), higher = more random |
+| `class_temperature` | Randomness in token sampling | 0 = greedy (deterministic), higher = more random |
+| `layer_penalty_factor` | Penalty on deeper codebook layers | Encourages lower layers to unmask first |
+| `denoise` | Prepend denoise token to input | Generally improves output quality |
+| `preprocess_prompt` | Clean reference audio | Removes long silences, adds punctuation |
+| `postprocess_output` | Clean generated audio | Removes long silences from output |
 
 ## Attention Backends
 
@@ -268,6 +317,9 @@ Connect `OmniVoice Whisper Loader` to `whisper_model` input on Voice Clone TTS t
 
 ### Import errors after install
 Restart ComfyUI completely to reload Python modules.
+
+### FFmpeg error on Windows when saving audio
+Add your FFmpeg `bin/` folder to `PATH` in your ComfyUI launch `.bat` file, or use a WAV audio save node instead.
 
 ## Credits
 
