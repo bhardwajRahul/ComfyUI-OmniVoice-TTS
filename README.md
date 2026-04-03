@@ -9,7 +9,8 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2604.00688-b31b1b)](https://arxiv.org/abs/2604.00688)
 [![GitHub](https://img.shields.io/badge/GitHub%20OmniVoice-k2--fsa/OmniVoice-black)](https://github.com/k2-fsa/OmniVoice)
 
-<img width="1801" height="1172" alt="Screenshot 2026-04-02 203949" src="https://github.com/user-attachments/assets/1dfd9972-74ee-4035-b7f0-88c14a7da9d5" />
+
+<img width="1611" height="1260" alt="Screenshot 2026-04-03 124716" src="https://github.com/user-attachments/assets/d30440cf-2121-40f1-9b22-22c89fe7540c" />
 
 
 ## Features
