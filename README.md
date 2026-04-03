@@ -9,6 +9,9 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2604.00688-b31b1b)](https://arxiv.org/abs/2604.00688)
 [![GitHub](https://img.shields.io/badge/GitHub%20OmniVoice-k2--fsa/OmniVoice-black)](https://github.com/k2-fsa/OmniVoice)
 
+<img width="1801" height="1172" alt="Screenshot 2026-04-02 203949" src="https://github.com/user-attachments/assets/1dfd9972-74ee-4035-b7f0-88c14a7da9d5" />
+
+
 ## Features
 
 - **600+ Languages** — Broadest language coverage among zero-shot TTS models
@@ -21,6 +24,8 @@
 - **Auto-Download** — Models download automatically from HuggingFace on first use
 - **Whisper ASR Caching** — Pre-load Whisper to avoid re-downloading on each run
 - **VRAM Efficient** — Automatic CPU offload, VBAR/aimdo integration, smart cache invalidation
+
+https://github.com/user-attachments/assets/b9c75048-915a-4993-9169-ddb1d2b28f41
 
 ## Installation
 
