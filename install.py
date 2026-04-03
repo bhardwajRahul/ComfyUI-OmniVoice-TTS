@@ -143,6 +143,7 @@ def main():
         ("librosa", "librosa", "Audio processing"),
         ("sentencepiece", "sentencepiece", "Tokenization"),
         ("jieba", "jieba", "Chinese text segmentation"),
+        ("pydub", "pydub", "Audio manipulation (required by omnivoice at import time)"),
     ]
 
     # Packages safe to install with --no-deps (no transitive deps that
