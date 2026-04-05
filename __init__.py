@@ -12,7 +12,7 @@ Model weights are auto-downloaded from HuggingFace on first inference.
 Supports 600+ languages with zero-shot voice cloning and voice design.
 """
 
-__version__ = "0.2.7"
+__version__ = "0.2.8"
 
 import logging
 import sys
@@ -35,18 +35,42 @@ if not logger.handlers:
     logger.setLevel(logging.INFO)
 
 
-def _check_dependencies() -> bool:
-    """Check if omnivoice is installed. Returns True if ready."""
+def _check_dependencies() -> tuple[bool, list[tuple[str, list[str]]]]:
+    """Check if omnivoice and its critical dependencies are importable.
+
+    Returns:
+        (ready, missing) where *missing* is a list of (package_name, extra_args)
+        tuples.  *extra_args* are pip flags like ``["--upgrade"]`` needed
+        beyond a plain ``pip install <pkg>``.
+    """
     try:
         import omnivoice
-        return True
-    except Exception as e:
-        logger.error("=" * 60)
-        logger.error(f" omnivoice import failed: {e}")
-        logger.error(" Run: pip install --no-deps omnivoice")
-        logger.error(" Or restart ComfyUI to trigger install.py")
-        logger.error("=" * 60)
-        return False
+    except ImportError:
+        return False, [("omnivoice", ["--no-deps"])]
+
+    # Sub-dependencies that ``pip install omnivoice --no-deps`` skips.
+    missing: list[tuple[str, list[str]]] = []
+
+    try:
+        import soxr
+    except ImportError:
+        missing.append(("soxr", []))
+
+    try:
+        import transformers
+    except ImportError:
+        missing.append(("transformers", ["--upgrade"]))
+    else:
+        # transformers is installed but may be too old — check version.
+        # OmniVoice needs transformers >= 4.57 (HiggsAudio tokenizer support).
+        try:
+            current = tuple(int(x) for x in transformers.__version__.split(".")[:2])
+            if current < (4, 57):
+                missing.append(("transformers", ["--upgrade"]))
+        except (ValueError, AttributeError):
+            pass
+
+    return (len(missing) == 0), missing
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +88,9 @@ try:
 except Exception as e:
     logger.warning(f"Failed to register Whisper loader: {e}")
 
-if _check_dependencies():
+_deps_ready, _deps_missing = _check_dependencies()
+
+if _deps_ready:
     try:
         from .nodes.loader import _register_folder
         _register_folder()
@@ -96,20 +122,36 @@ if _check_dependencies():
     except Exception as e:
         logger.error(f"Failed to register nodes: {e}", exc_info=True)
 else:
-    # Fallback: try to install omnivoice with --no-deps to avoid
-    # clobbering the user's torch/torchvision/torchaudio stack.
+    # Fallback: install exactly what's missing.
+    # omnivoice itself missing  -> pip install omnivoice --no-deps
+    # sub-dep missing/too-old   -> pip install <pkg> [--upgrade]
+    _missing_names = [pkg for pkg, _ in _deps_missing]
+    logger.error("=" * 60)
+    logger.error(f" Missing packages: {', '.join(_missing_names)}")
+    logger.error("=" * 60)
     try:
         import subprocess
 
-        logger.warning("omnivoice not found — attempting to install with --no-deps ...")
-        pip_cmd = [sys.executable, "-m", "pip", "install", "--no-deps", "omnivoice"]
-        result = subprocess.run(pip_cmd, capture_output=True, text=True, timeout=120)
+        for _pkg, _extra_args in _deps_missing:
+            _cmd = [sys.executable, "-m", "pip", "install"] + _extra_args + [_pkg]
+            logger.warning(f"Installing {_pkg} ...")
+            _result = subprocess.run(_cmd, capture_output=True, text=True, timeout=120)
+            if _result.returncode == 0:
+                logger.warning(f"  {_pkg} installed successfully.")
+            else:
+                logger.error(f"  Failed to install {_pkg}: {_result.stderr}")
 
-        if result.returncode == 0:
-            logger.warning("OmniVoice installed — RESTART ComfyUI to complete setup.")
+        # Re-check to report final status
+        _deps_ready_now, _deps_still_missing = _check_dependencies()
+        if _deps_ready_now:
+            logger.warning("All dependencies installed — RESTART ComfyUI to load nodes.")
         else:
-            logger.error(f"Failed to install omnivoice: {result.stderr}")
+            _still = [pkg for pkg, _ in _deps_still_missing]
+            logger.error(
+                f"Dependencies still missing after install: {', '.join(_still)}. "
+                f"Try manually: pip install {' '.join(_still)}"
+            )
     except Exception as e:
-        logger.error(f"Failed to install omnivoice: {e}")
+        logger.error(f"Failed to install dependencies: {e}")
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "__version__"]

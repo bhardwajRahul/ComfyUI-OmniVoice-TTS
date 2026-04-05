@@ -83,11 +83,14 @@ def _is_whisper_downloaded(repo_id: str) -> bool:
     if not model_path.is_dir():
         return False
     has_config = (model_path / "config.json").is_file()
-    has_model = any(
-        f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
-        for f in model_path.iterdir()
-        if f.is_file()
-    )
+    try:
+        has_model = any(
+            f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
+            for f in model_path.iterdir()
+            if f.is_file()
+        )
+    except PermissionError:
+        return False
     return has_config or has_model
 
 
@@ -108,11 +111,14 @@ def get_whisper_model_names() -> list[str]:
         for entry in sorted(base.iterdir()):
             if entry.is_dir() and entry.name not in known_safe_names:
                 has_config = (entry / "config.json").is_file()
-                has_model = any(
-                    f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
-                    for f in entry.iterdir()
-                    if f.is_file()
-                )
+                try:
+                    has_model = any(
+                        f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
+                        for f in entry.iterdir()
+                        if f.is_file()
+                    )
+                except PermissionError:
+                    continue
                 if has_config or has_model:
                     names.append(entry.name)
     except OSError:
@@ -251,11 +257,14 @@ def find_local_whisper_model() -> Optional[str]:
         for entry in sorted(base.iterdir()):
             if entry.is_dir() and entry.name not in known:
                 has_config = (entry / "config.json").is_file()
-                has_model = any(
-                    f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
-                    for f in entry.iterdir()
-                    if f.is_file()
-                )
+                try:
+                    has_model = any(
+                        f.suffix in {".safetensors", ".bin", ".pt", ".pth"}
+                        for f in entry.iterdir()
+                        if f.is_file()
+                    )
+                except PermissionError:
+                    continue
                 if has_config or has_model:
                     return entry.name
     except OSError:

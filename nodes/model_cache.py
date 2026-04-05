@@ -32,6 +32,9 @@ _cached_whisper_key: tuple = ()
 # Cancellation event for interrupt handling
 cancel_event: threading.Event = threading.Event()
 
+# Guard for preventing double-patching on hot-reload
+_hook_installed: bool = False
+
 
 def get_cache_key(model_path: str, device: str, dtype: str, attention: str) -> tuple:
     """Generate a cache key from model configuration."""
@@ -89,6 +92,50 @@ def _detect_vbar() -> tuple[bool, bool]:
     return False, False
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers (callers must already hold _cache_lock)
+# ---------------------------------------------------------------------------
+
+def _do_unload() -> None:
+    """Unload logic without lock acquisition. Caller must hold _cache_lock."""
+    global _cached_model, _cached_key, _keep_loaded, _offloaded
+    if _cached_model is None:
+        return
+    logger.info("Unloading OmniVoice model from memory...")
+    try:
+        _cached_model.to("cpu")
+    except Exception:
+        pass
+    del _cached_model
+    _cached_model = None
+    _cached_key = ()
+    _keep_loaded = False
+    _offloaded = False
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    gc.collect()
+    logger.info("Model unloaded and VRAM freed.")
+
+
+def _do_resume(device: str) -> None:
+    """Resume an offloaded model to device. Caller must hold _cache_lock."""
+    global _offloaded
+    if _cached_model is None or not _offloaded:
+        return
+    _cached_model.to(device)
+    _offloaded = False
+    asr = getattr(_cached_model, "_asr_pipe", None)
+    if asr is not None:
+        _whisper_to_device(asr, device)
+    logger.info(f"Model resumed to {device}.")
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def offload_model_to_cpu() -> None:
     """Offload the cached model to CPU to free VRAM."""
     global _offloaded
@@ -118,53 +165,98 @@ def offload_model_to_cpu() -> None:
             logger.warning(f"Failed to offload model: {e}")
 
 
-def resume_model_to_cuda(device: str = "cuda") -> None:
-    """Resume an offloaded model back to GPU.
+def resume_model_to_device(device: str = "cuda") -> None:
+    """Resume an offloaded model back to the target device.
 
     Also restores the device of any internal ASR pipeline (``_asr_pipe``)
     attached to the model so that input tensors and weights stay on the
     same device.
     """
-    global _offloaded
     with _cache_lock:
-        if _cached_model is None:
-            return
-        if not _offloaded:
-            return
-        try:
-            _cached_model.to(device)
-            _offloaded = False
-            # Restore internal ASR pipeline to the same device
-            asr = getattr(_cached_model, "_asr_pipe", None)
-            if asr is not None:
-                _whisper_to_device(asr, device)
-            logger.info(f"Model resumed to {device}.")
-        except Exception as e:
-            logger.warning(f"Failed to resume model: {e}")
+        _do_resume(device)
+
+
+# Backward-compatible alias for any external callers
+resume_model_to_cuda = resume_model_to_device
 
 
 def unload_model() -> None:
     """Fully unload the model from memory."""
-    global _cached_model, _cached_key, _keep_loaded, _offloaded
     with _cache_lock:
-        if _cached_model is not None:
-            logger.info("Unloading OmniVoice model from memory...")
-            try:
-                _cached_model.to("cpu")
-            except Exception:
-                pass
-            del _cached_model
-            _cached_model = None
-            _cached_key = ()
-            _keep_loaded = False
-            _offloaded = False
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-            gc.collect()
-            logger.info("Model unloaded and VRAM freed.")
+        _do_unload()
 
+
+# ---------------------------------------------------------------------------
+# Shared model loader (single point of truth for all nodes)
+# ---------------------------------------------------------------------------
+
+def get_or_load_model(
+    model_name: str,
+    device: str,
+    dtype: str,
+    attention: str,
+    keep_loaded: bool = False,
+) -> tuple[Any, None]:
+    """Get or load the OmniVoice model with thread-safe caching.
+
+    Atomically checks the cache key and unloads the old model if settings
+    changed — no TOCTOU gap between check and unload.  The heavy
+    ``load_model()`` call runs outside the lock so concurrent requests
+    aren't blocked during download / GPU allocation.
+
+    Returns:
+        (model, None) — the second element is kept for API compatibility.
+    """
+    global _cached_model, _cached_key, _keep_loaded, _offloaded
+
+    from .loader import load_model, resolve_device
+
+    key = get_cache_key(model_name, device, dtype, attention)
+    device_str, _ = resolve_device(device)
+
+    # ---- Fast path / unload-under-lock ----
+    with _cache_lock:
+        if _cached_model is not None and _cached_key == key:
+            _keep_loaded = keep_loaded
+            if _offloaded:
+                _do_resume(device_str)
+                logger.info(f"Resumed offloaded model to {device_str}.")
+            else:
+                logger.info("Reusing cached OmniVoice model.")
+            return _cached_model, None
+
+        if _cached_model is not None:
+            logger.info(
+                "Settings changed (model/device/dtype/attention) — "
+                "unloading cached model."
+            )
+            _do_unload()
+
+    # ---- Slow path: load outside lock ----
+    omnivoice_model, _ = load_model(model_name, device, dtype, attention)
+
+    # ---- Store result under lock ----
+    with _cache_lock:
+        # Another thread may have loaded the same key while we waited
+        if _cached_model is not None and _cached_key == key:
+            logger.info("Another thread loaded the same model — using cached version.")
+            _keep_loaded = keep_loaded
+            return _cached_model, None
+
+        if _cached_model is not None:
+            _do_unload()
+
+        _cached_model = omnivoice_model
+        _cached_key = key
+        _keep_loaded = keep_loaded
+        _offloaded = False
+
+    return omnivoice_model, None
+
+
+# ---------------------------------------------------------------------------
+# Whisper helpers
+# ---------------------------------------------------------------------------
 
 def _whisper_to_device(pipe: Any, device: str) -> None:
     """Move a HuggingFace pipeline to the target device.
@@ -293,6 +385,9 @@ def apply_vbar_detection(model: Any, device_str: str) -> None:
 
 def _hook_comfy_model_management() -> None:
     """Hook into ComfyUI's model management for automatic VRAM management."""
+    global _hook_installed
+    if _hook_installed:
+        return
     try:
         import comfy.model_management as mm
         _original = mm.soft_empty_cache
@@ -309,6 +404,7 @@ def _hook_comfy_model_management() -> None:
             return _original(*args, **kwargs)
 
         mm.soft_empty_cache = _patched_soft_empty_cache
+        _hook_installed = True
         logger.debug("Hooked comfy.model_management.soft_empty_cache for OmniVoice unload.")
     except Exception:
         pass

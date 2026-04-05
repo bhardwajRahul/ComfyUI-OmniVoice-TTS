@@ -13,23 +13,16 @@ import torch
 
 from .loader import (
     get_model_names,
-    load_model,
     numpy_audio_to_comfy,
     comfy_audio_to_numpy,
-    resolve_device,
 )
 from .whisper_loader import find_local_whisper_model, load_whisper_pipeline
 from .model_cache import (
     cancel_event,
-    get_cache_key,
-    get_cached_model,
     get_or_cache_whisper,
-    is_offloaded,
+    get_or_load_model,
     offload_model_to_cpu,
     offload_whisper_to_cpu,
-    resume_model_to_cuda,
-    set_cached_model,
-    set_keep_loaded,
     unload_model,
     unload_whisper,
 )
@@ -457,9 +450,15 @@ class OmniVoiceLongformTTS:
         if not text.strip():
             raise ValueError("Text cannot be empty.")
 
-        omnivoice_model, _ = self._get_model(
+        omnivoice_model, _ = get_or_load_model(
             model, device, dtype, attention, keep_model_loaded
         )
+
+        # Set random seed early so Whisper transcription is also seeded
+        actual_seed = seed if seed != 0 else torch.randint(0, 2**31, (1,)).item()
+        torch.manual_seed(actual_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(actual_seed)
 
         use_voice_clone = ref_audio is not None
 
@@ -521,11 +520,6 @@ class OmniVoiceLongformTTS:
 
         if pbar:
             pbar.update_absolute(1, total_chunks + 1)
-
-        actual_seed = seed if seed != 0 else torch.randint(0, 2**31, (1,)).item()
-        torch.manual_seed(actual_seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(actual_seed)
 
         self._check_interrupt()
 
@@ -614,39 +608,6 @@ class OmniVoiceLongformTTS:
         if result is None:
             raise RuntimeError("Generation failed — see logs above.")
         return (result,)
-
-    def _get_model(
-        self,
-        model_name: str,
-        device: str,
-        dtype: str,
-        attention: str,
-        keep_loaded: bool = False,
-    ):
-        """Get or load the OmniVoice model with caching."""
-        key = get_cache_key(model_name, device, dtype, attention)
-        cached_model, cached_key = get_cached_model()
-
-        if cached_model is not None and cached_key != key:
-            logger.info(
-                f"Settings changed (model/device/dtype/attention) — "
-                f"unloading cached model. Old: {cached_key}, New: {key}"
-            )
-            unload_model()
-
-        if cached_model is not None and cached_key == key:
-            set_keep_loaded(keep_loaded)
-            if is_offloaded():
-                device_str, _ = resolve_device(device)
-                logger.info(f"Resuming offloaded model to {device_str}...")
-                resume_model_to_cuda(device_str)
-            else:
-                logger.info("Reusing cached OmniVoice model.")
-            return cached_model, None
-
-        omnivoice_model, _ = load_model(model_name, device, dtype, attention)
-        set_cached_model(omnivoice_model, key, keep_loaded=keep_loaded)
-        return omnivoice_model, None
 
     def _check_interrupt(self):
         """Check if processing was interrupted."""

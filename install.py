@@ -81,14 +81,21 @@ def check_torch():
 
 
 def main():
-    # Early exit if omnivoice is already installed and torch has CUDA
+    # Early exit only if omnivoice AND all critical sub-deps import cleanly.
+    # We do NOT check CUDA availability — it's irrelevant to whether deps
+    # are installed.  We actually import the modules (not just find_spec)
+    # to catch broken installs where the package is on disk but can't load.
     try:
         import omnivoice  # noqa: F401
-        import torch
-        if torch.cuda.is_available():
-            print("[OmniVoice] Already installed correctly. Skipping.")
-            return
-    except ImportError:
+        import soxr      # noqa: F401
+        import transformers  # noqa: F401
+        # Verify transformers is new enough (>= 4.57 for HiggsAudio tokenizer)
+        _tv = tuple(int(x) for x in transformers.__version__.split(".")[:2])
+        if _tv < (4, 57):
+            raise ImportError(f"transformers {_tv} too old (need >= 4.57)")
+        print("[OmniVoice] Already installed correctly. Skipping.")
+        return
+    except (ImportError, ValueError, AttributeError):
         pass
 
     print("=" * 60)

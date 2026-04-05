@@ -15,22 +15,15 @@ import torch
 
 from .loader import (
     get_model_names,
-    load_model,
     numpy_audio_to_comfy,
     comfy_audio_to_numpy,
-    resolve_device,
 )
 from .model_cache import (
     cancel_event,
-    get_cache_key,
-    get_cached_model,
     get_or_cache_whisper,
-    is_offloaded,
+    get_or_load_model,
     offload_model_to_cpu,
     offload_whisper_to_cpu,
-    resume_model_to_cuda,
-    set_cached_model,
-    set_keep_loaded,
     unload_model,
     unload_whisper,
 )
@@ -355,7 +348,7 @@ if _V3:
                 )
 
             # Load model
-            omnivoice_model, _ = cls._get_model(
+            omnivoice_model, _ = get_or_load_model(
                 model, device, dtype, attention, keep_model_loaded
             )
 
@@ -481,42 +474,6 @@ if _V3:
             if result is None:
                 raise RuntimeError("Generation failed — see logs above.")
             return IO.NodeOutput(result)
-
-        @classmethod
-        def _get_model(
-            cls,
-            model_name: str,
-            device: str,
-            dtype: str,
-            attention: str,
-            keep_loaded: bool = False,
-        ):
-            """Get or load the OmniVoice model with caching."""
-            key = get_cache_key(model_name, device, dtype, attention)
-            cached_model, cached_key = get_cached_model()
-
-            # Check if settings changed - force full unload if so
-            if cached_model is not None and cached_key != key:
-                logger.info(
-                    f"Settings changed (model/device/dtype/attention) — "
-                    f"unloading cached model."
-                )
-                unload_model()
-
-            if cached_model is not None and cached_key == key:
-                set_keep_loaded(keep_loaded)
-                if is_offloaded():
-                    device_str, _ = resolve_device(device)
-                    logger.info(f"Resuming offloaded model to {device_str}...")
-                    resume_model_to_cuda(device_str)
-                else:
-                    logger.info("Reusing cached OmniVoice model.")
-                return cached_model, None
-
-            # Load fresh model
-            omnivoice_model, _ = load_model(model_name, device, dtype, attention)
-            set_cached_model(omnivoice_model, key, keep_loaded=keep_loaded)
-            return omnivoice_model, None
 
         @classmethod
         def _check_interrupt(cls):
@@ -673,7 +630,7 @@ else:
                 )
 
             # Load model
-            omnivoice_model, _ = self._get_model(
+            omnivoice_model, _ = get_or_load_model(
                 model, device, dtype, attention, keep_model_loaded
             )
 
@@ -813,41 +770,6 @@ else:
             if result is None:
                 raise RuntimeError("Generation failed — see logs above.")
             return (result,)
-
-        def _get_model(
-            self,
-            model_name: str,
-            device: str,
-            dtype: str,
-            attention: str,
-            keep_loaded: bool = False,
-        ):
-            """Get or load the OmniVoice model with caching."""
-            key = get_cache_key(model_name, device, dtype, attention)
-            cached_model, cached_key = get_cached_model()
-
-            # Check if settings changed - force full unload if so
-            if cached_model is not None and cached_key != key:
-                logger.info(
-                    f"Settings changed (model/device/dtype/attention) — "
-                    f"unloading cached model."
-                )
-                unload_model()
-
-            if cached_model is not None and cached_key == key:
-                set_keep_loaded(keep_loaded)
-                if is_offloaded():
-                    device_str, _ = resolve_device(device)
-                    logger.info(f"Resuming offloaded model to {device_str}...")
-                    resume_model_to_cuda(device_str)
-                else:
-                    logger.info("Reusing cached OmniVoice model.")
-                return cached_model, None
-
-            # Load fresh model
-            omnivoice_model, _ = load_model(model_name, device, dtype, attention)
-            set_cached_model(omnivoice_model, key, keep_loaded=keep_loaded)
-            return omnivoice_model, None
 
         def _check_interrupt(self):
             """Check if processing was interrupted."""

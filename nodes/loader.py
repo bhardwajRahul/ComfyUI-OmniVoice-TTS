@@ -102,11 +102,14 @@ def _is_model_downloaded(model_name: str) -> bool:
         return False
     # Check for config.json or any weight files
     has_config = (model_path / "config.json").is_file()
-    has_weights = any(
-        f.suffix in {".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".gguf"}
-        for f in model_path.iterdir()
-        if f.is_file()
-    )
+    try:
+        has_weights = any(
+            f.suffix in {".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".gguf"}
+            for f in model_path.iterdir()
+            if f.is_file()
+        )
+    except PermissionError:
+        return False
     return has_config or has_weights
 
 
@@ -114,6 +117,15 @@ def get_model_names() -> list[str]:
     """Get list of available models (downloaded + auto-download options)."""
     base = _get_models_base()
     names = []
+
+    # Build a set of known safe folder names for deduplication.
+    # This covers both the display key ("OmniVoice-bf16") and the
+    # repo-id-based safe name ("k2-fsa_OmniVoice") so local folders
+    # that match any known model are never duplicated in the dropdown.
+    _known_folders: set[str] = set()
+    for _mn, _cfg in HF_MODELS.items():
+        _known_folders.add(_mn)                          # display key
+        _known_folders.add(_cfg["repo_id"].replace("/", "_"))  # repo-id safe name
 
     # Add HF models — always keep the "(auto download)" entry so saved
     # workflow values never break after download (mirrors whisper_loader.py).
@@ -128,17 +140,19 @@ def get_model_names() -> list[str]:
             if not entry.is_dir():
                 continue
             safe_name = entry.name
-            # Convert back to HF format if it matches
-            hf_name = safe_name.replace("_", "/")
-            if hf_name in HF_MODELS:
+            # Skip folders that belong to a known HF model (dedup)
+            if safe_name in _known_folders:
                 continue
             # Check if it has model files
             has_config = (entry / "config.json").is_file()
-            has_weights = any(
-                f.suffix in {".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".gguf"}
-                for f in entry.iterdir()
-                if f.is_file()
-            )
+            try:
+                has_weights = any(
+                    f.suffix in {".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".gguf"}
+                    for f in entry.iterdir()
+                    if f.is_file()
+                )
+            except PermissionError:
+                continue
             if has_config or has_weights:
                 names.append(safe_name)
     except OSError:
@@ -265,8 +279,8 @@ def comfy_audio_to_numpy(audio_dict: dict, target_sr: Optional[int] = None) -> T
 
     # Resample if needed
     if target_sr is not None and source_sr != target_sr:
-        import librosa
-        audio_np = librosa.resample(audio_np, orig_sr=source_sr, target_sr=target_sr)
+        import soxr
+        audio_np = soxr.resample(audio_np, source_sr, target_sr)
         return audio_np, target_sr
 
     return audio_np, source_sr
