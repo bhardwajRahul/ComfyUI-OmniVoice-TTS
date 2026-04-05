@@ -39,35 +39,39 @@ Match your error message to one of the cases below.
 
 ### Case A — `cannot import name 'HiggsAudioV2TokenizerModel' from 'transformers'`
 
-> ⚠️ **Despite what this error looks like, your `transformers` is NOT too old.** This error is caused by a missing `soxr` package, not a missing class in `transformers`. The confusing error message is a known red herring.
+**What's happening:** Either your `transformers` is too old and genuinely doesn't have this class yet, or your `transformers` is new enough (`5.4+`) but is missing `soxr`, which it now requires internally. Both causes produce the exact same error message.
 
-**What's happening:** `transformers 5.4+` added `soxr` as a required import inside its audio utilities. When `omnivoice` loads `HiggsAudioV2TokenizerModel`, `transformers` internally tries to import `soxr` — if it's not installed, the whole chain crashes with this misleading error.
-
-**Fix — install `soxr`:**
+**Fix — run both of these, then restart ComfyUI:**
 
 Windows (venv):
 ```bash
+C:\Users\<you>\Documents\ComfyUI\venv\Scripts\pip install transformers --upgrade
 C:\Users\<you>\Documents\ComfyUI\venv\Scripts\pip install soxr
 ```
 
 Windows (portable / embedded Python):
 ```bash
+C:\ComfyUI\python_embeded\python.exe -m pip install transformers --upgrade
 C:\ComfyUI\python_embeded\python.exe -m pip install soxr
 ```
 
 Linux / macOS:
 ```bash
+path/to/ComfyUI/venv/bin/pip install transformers --upgrade
 path/to/ComfyUI/venv/bin/pip install soxr
 ```
 
 Using uv:
 ```bash
+uv pip install transformers --upgrade
 uv pip install soxr
 ```
 
 Then **restart ComfyUI**. All nodes should appear.
 
 > **Note:** `soxr` is included automatically in node version `0.2.7+` fresh installs. If you installed before this version, install it manually with the commands above.
+> 
+> **If upgrading transformers breaks other nodes:** You have a dependency conflict in your environment. See [Transformers version conflicts](#transformers-version-conflicts) below.
 
 ---
 
