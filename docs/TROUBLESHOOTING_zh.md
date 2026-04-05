@@ -39,35 +39,39 @@
 
 ### 情况 A — `cannot import name 'HiggsAudioV2TokenizerModel' from 'transformers'`
 
-> ⚠️ **尽管这个错误看起来像 `transformers` 太旧，但实际上并不是。** 此错误是由缺少 `soxr` 包引起的，而不是 `transformers` 中缺少某个类。这个令人困惑的错误信息是已知的误导性提示。
+**原因：** 两种情况都会产生完全相同的错误信息：你的 `transformers` 版本太旧，确实还没有这个类；或者你的 `transformers` 版本足够新（`5.4+`），但缺少它现在内部依赖的 `soxr` 包。
 
-**原因：** `transformers 5.4+` 在其音频工具模块中新增了 `soxr` 作为必需导入。当 `omnivoice` 加载 `HiggsAudioV2TokenizerModel` 时，`transformers` 内部会尝试导入 `soxr` — 如果未安装，整条链路就会崩溃并显示此误导性错误。
-
-**修复方法 — 安装 `soxr`：**
+**修复方法 — 依次运行以下两条命令，然后重启 ComfyUI：**
 
 Windows（venv）：
 ```bash
+C:\Users\<你>\Documents\ComfyUI\venv\Scripts\pip install transformers --upgrade
 C:\Users\<你>\Documents\ComfyUI\venv\Scripts\pip install soxr
 ```
 
 Windows（便携版 / 内嵌 Python）：
 ```bash
+C:\ComfyUI\python_embeded\python.exe -m pip install transformers --upgrade
 C:\ComfyUI\python_embeded\python.exe -m pip install soxr
 ```
 
 Linux / macOS：
 ```bash
+path/to/ComfyUI/venv/bin/pip install transformers --upgrade
 path/to/ComfyUI/venv/bin/pip install soxr
 ```
 
 使用 uv：
 ```bash
+uv pip install transformers --upgrade
 uv pip install soxr
 ```
 
 然后**重启 ComfyUI**。所有节点应该正常出现。
 
 > **新安装用户注意：** 从节点版本 `0.2.7` 开始，`soxr` 已包含在 `install.py` 中，会自动安装。如果你在此版本之前安装的，请使用上述命令手动安装。
+>
+> **如果升级 transformers 导致其他节点损坏：** 你的环境存在依赖冲突，请参见下方的 [Transformers 版本冲突](#transformers-版本冲突)。
 
 ---
 
