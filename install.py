@@ -89,12 +89,22 @@ def main():
         import omnivoice  # noqa: F401
         import soxr      # noqa: F401
         import transformers  # noqa: F401
-        # Verify transformers is new enough (>= 4.57 for HiggsAudio tokenizer)
+        # Verify transformers is new enough (>= 5.3 for HiggsAudioV2TokenizerModel)
         _tv = tuple(int(x) for x in transformers.__version__.split(".")[:2])
-        if _tv < (4, 57):
-            raise ImportError(f"transformers {_tv} too old (need >= 4.57)")
-        print("[OmniVoice] Already installed correctly. Skipping.")
-        return
+        if _tv < (5, 3):
+            print("=" * 60)
+            print(" [OmniVoice] WARNING: transformers is too old!")
+            print(f"  Installed: {transformers.__version__}, need >= 5.3.0")
+            print('  Run: pip install "transformers>=5.3.0"')
+            print("  NOTE: This may break other ComfyUI nodes that")
+            print("        depend on older versions of transformers.")
+            print("=" * 60)
+            print("[OmniVoice] Skipping auto-upgrade — user must decide.")
+            # Don't return — continue so other deps (soxr, pydub, etc.) still install.
+            # The node itself will warn again at runtime.
+        else:
+            print("[OmniVoice] Already installed correctly. Skipping.")
+            return
     except (ImportError, ValueError, AttributeError):
         pass
 

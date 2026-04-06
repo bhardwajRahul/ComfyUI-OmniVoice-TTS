@@ -306,29 +306,28 @@ def _resolve_attn_implementation(attention: str, device: str) -> str | None:
         return "eager"
 
     if attention == "sage_attention":
-        if device != "cuda":
-            logger.warning(
-                f"sage_attention is only supported on CUDA. "
-                f"Falling back to eager on {device}."
-            )
-            return "eager"
         try:
             from .sage_attention_patch import SAGE_ATTENTION_AVAILABLE
-            if not SAGE_ATTENTION_AVAILABLE:
-                logger.warning(
-                    "sage_attention requested but sageattention is not installed "
-                    "or GPU is not supported. Install with: pip install sageattention\n"
-                    "Falling back to eager."
-                )
+            if SAGE_ATTENTION_AVAILABLE:
+                # Load with eager, then monkey-patch Qwen3Attention.forward
                 return "eager"
         except ImportError:
-            logger.warning(
-                "sage_attention requested but sageattention is not installed. "
-                "Install with: pip install sageattention\n"
-                "Falling back to eager."
-            )
-            return "eager"
-        # Load with eager, then monkey-patch Qwen3Attention.forward
+            pass
+
+        # V2 not available — try V1 fallback
+        try:
+            from .sage_attention_v1.sage_attention_v1_patch import SAGE_ATTN_V1_AVAILABLE
+            if SAGE_ATTN_V1_AVAILABLE:
+                logger.info("SageAttention V2 not available, using V1 (Triton) fallback.")
+                return "eager"
+        except ImportError:
+            pass
+        # Neither V2 nor V1 available
+        logger.warning(
+            "sage_attention requested but sageattention is not installed. "
+            "Install with: pip install sageattention\n"
+            "Falling back to eager."
+        )
         return "eager"
 
     return None
@@ -410,12 +409,26 @@ def load_model(
     model.eval()
 
     # Apply SageAttention monkey-patch if requested
-    if attention == "sage_attention" and device_str == "cuda":
-        try:
-            from .sage_attention_patch import set_sage_attention
-            set_sage_attention(model)
-        except Exception as e:
-            logger.warning(f"SageAttention patching failed: {e}. Using default attention.")
+    if attention == "sage_attention":
+        patched = False
+        # Try V2 first (CUDA SM80+)
+        if device_str == "cuda":
+            try:
+                from .sage_attention_patch import set_sage_attention
+                set_sage_attention(model)
+                patched = True
+            except Exception as e:
+                logger.warning(f"SageAttention V2 patching failed: {e}.")
+        # Try V1 fallback (AMD ROCm / older NVIDIA / CPU)
+        if not patched:
+            try:
+                from .sage_attention_v1.sage_attention_v1_patch import set_sage_attention_v1
+                set_sage_attention_v1(model)
+                patched = True
+            except Exception as e:
+                logger.warning(f"SageAttention V1 patching failed: {e}. Using default attention.")
+        if not patched:
+            logger.info("SageAttention: no compatible version found, using default attention.")
 
     # Apply VBAR/aimdo detection
     from .model_cache import apply_vbar_detection

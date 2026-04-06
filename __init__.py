@@ -12,12 +12,36 @@ Model weights are auto-downloaded from HuggingFace on first inference.
 Supports 600+ languages with zero-shot voice cloning and voice design.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import logging
 import sys
+import types
 from pathlib import Path
 from typing import Any, Dict
+
+# ---------------------------------------------------------------------------
+# Pre-emptively block torchcodec from crashing on incompatible PyTorch builds
+# (e.g., AMD ROCm, custom builds).  Transformers' Whisper pipeline tries to
+# import torchcodec during audio preprocessing.  If the native DLL fails to
+# load it raises RuntimeError and kills the node.  By inserting a stub into
+# sys.modules *before* that import runs, transformers silently falls back to
+# soundfile/sox which OmniVoice already has.
+# ---------------------------------------------------------------------------
+if 'torchcodec' not in sys.modules:
+    try:
+        import torchcodec  # noqa: F401
+    except Exception:
+        _tc_stub = types.ModuleType('torchcodec')
+        _tc_stub.__path__ = []  # pretend it's a package
+        for _sub in ('decoders', 'encoders', 'samplers', 'transforms', '_core'):
+            _sub_mod = types.ModuleType(f'torchcodec.{_sub}')
+            setattr(_tc_stub, _sub, _sub_mod)
+            sys.modules[f'torchcodec.{_sub}'] = _sub_mod
+        sys.modules['torchcodec'] = _tc_stub
+        logging.getLogger("OmniVoice").info(
+            "torchcodec blocked (incompatible PyTorch build) — using soundfile fallback"
+        )
 
 _HERE = Path(__file__).parent.resolve()
 
@@ -63,11 +87,18 @@ def _check_dependencies() -> tuple[bool, list[tuple[str, list[str]]]]:
         missing.append(("transformers", ["--upgrade"]))
     else:
         # transformers is installed but may be too old — check version.
-        # OmniVoice needs transformers >= 4.57 (HiggsAudio tokenizer support).
+        # OmniVoice needs transformers >= 5.3 (HiggsAudioV2TokenizerModel support).
         try:
             current = tuple(int(x) for x in transformers.__version__.split(".")[:2])
-            if current < (4, 57):
-                missing.append(("transformers", ["--upgrade"]))
+            if current < (5, 3):
+                logger.warning("=" * 60)
+                logger.warning(" OmniVoice WARNING: transformers is too old!")
+                logger.warning(f" Installed: {transformers.__version__}, need >= 5.3.0")
+                logger.warning(' Run: pip install "transformers>=5.3.0"')
+                logger.warning(" NOTE: This may break other ComfyUI nodes that")
+                logger.warning("       depend on older versions of transformers.")
+                logger.warning("=" * 60)
+                # Don't add to missing — don't auto-upgrade, let user decide
         except (ValueError, AttributeError):
             pass
 

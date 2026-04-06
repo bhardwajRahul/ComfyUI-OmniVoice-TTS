@@ -96,7 +96,10 @@ def sage_attention_forward(
         query_states, key_states, cos, sin
     )
 
-    if past_key_values is not None:
+    # Check BEFORE the cache update — once past_key_values is updated the
+    # variable is still not-None, so checking after would always skip sage.
+    _use_cache = past_key_values is not None
+    if _use_cache:
         cache_kwargs = {
             "sin": sin,
             "cos": cos,
@@ -110,7 +113,7 @@ def sage_attention_forward(
     # Fall back to SDPA in those cases.
     use_sage = (
         attention_mask is None
-        and past_key_values is None
+        and not _use_cache
         and SAGE_ATTENTION_FUNCTION is not None
     )
 
