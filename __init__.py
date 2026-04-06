@@ -12,7 +12,7 @@ Model weights are auto-downloaded from HuggingFace on first inference.
 Supports 600+ languages with zero-shot voice cloning and voice design.
 """
 
-__version__ = "0.2.8"
+__version__ = "0.2.9"
 
 import logging
 import sys
@@ -45,7 +45,8 @@ def _check_dependencies() -> tuple[bool, list[tuple[str, list[str]]]]:
     """
     try:
         import omnivoice
-    except ImportError:
+    except Exception as e:
+        logger.error(f"Failed to import omnivoice: {e}")
         return False, [("omnivoice", ["--no-deps"])]
 
     # Sub-dependencies that ``pip install omnivoice --no-deps`` skips.

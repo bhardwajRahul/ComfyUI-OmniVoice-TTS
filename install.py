@@ -175,10 +175,18 @@ def main():
     print("[OmniVoice] Verification:")
 
     # Check omnivoice
-    if is_installed("omnivoice"):
+    try:
+        importlib.invalidate_caches()
+        spec = importlib.util.find_spec("omnivoice")
+        if spec is None:
+            raise ImportError("omnivoice not found on disk")
+        # Actually execute it to catch runtime crashes
+        import omnivoice  # noqa: F401
         print("  [OK] omnivoice")
-    else:
-        print("  [FAIL] omnivoice - not installed")
+    except Exception as e:
+        print(f"  [FAIL] omnivoice - installed on disk but failed to import: {e}")
+        print("  Run this to see the full error:")
+        print(f"    {sys.executable} -c \"import omnivoice\"")
 
     # Check torch (should be unchanged)
     torch_version, has_cuda = check_torch()
