@@ -12,7 +12,7 @@ Model weights are auto-downloaded from HuggingFace on first inference.
 Supports 600+ languages with zero-shot voice cloning and voice design.
 """
 
-__version__ = "0.3.3"
+__version__ = "0.3.4"
 
 import logging
 import sys
@@ -56,6 +56,18 @@ if _tc_broken or _tc is None or getattr(_tc, '__spec__', None) is None:
         setattr(_tc_stub, _sub, _sub_mod)
         sys.modules[f'torchcodec.{_sub}'] = _sub_mod
     sys.modules['torchcodec'] = _tc_stub
+
+    # transformers/audio_utils.py calls importlib.metadata.version("torchcodec")
+    # at module level — this fails because stub has no pip metadata on disk.
+    # Patch metadata.version() to return a fake version for torchcodec only.
+    import importlib.metadata as _ilm
+    _orig_ilm_version = _ilm.version
+    def _patched_ilm_version(name):
+        if name == "torchcodec":
+            return "0.0.0"
+        return _orig_ilm_version(name)
+    _ilm.version = _patched_ilm_version
+
     logging.getLogger("OmniVoice").info(
         "torchcodec blocked (incompatible PyTorch build) — using soundfile fallback"
     )
@@ -86,8 +98,21 @@ def _check_dependencies() -> tuple[bool, list[tuple[str, list[str]]]]:
     """
     try:
         import omnivoice
-    except ImportError:
+    except ImportError as e:
+        # Check if omnivoice package exists on disk (findable) but a
+        # sub-dependency is missing.  If so, reinstalling with --no-deps
+        # won't help — the missing dep needs to be installed separately.
+        if importlib.util.find_spec("omnivoice") is not None:
+            logger.error(
+                f"omnivoice is installed but failed to import: {e}"
+            )
+            logger.error(
+                "Reinstalling will not fix this — a sub-dependency is "
+                "likely missing. Check the error above."
+            )
+            return False, []
         # Genuinely not installed
+        logger.warning(f"omnivoice not installed: {e}")
         return False, [("omnivoice", ["--no-deps"])]
     except Exception as e:
         # Installed but broken — reinstalling won't help, just warn
