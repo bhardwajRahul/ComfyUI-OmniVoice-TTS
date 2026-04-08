@@ -253,10 +253,17 @@ class OmniVoiceVoiceCloneTTS:
                         "multiline": False,
                         "default": "",
                         "tooltip": (
-                            "Optional dialect/style instruction (e.g., '四川话', 'british accent') "
-                            "or custom fine-tuned speaker name (e.g., '[CustomSpeaker1]'). "
-                            "Any string is passed directly to the model. "
-                            "Leave empty for default behaviour."
+                            "Dialect/style instruction from the model's supported values. "
+                            "English: american/british/australian/canadian/chinese/indian/"
+                            "japanese/korean/portuguese/russian accent, "
+                            "male/female, child/young adult/teenager/middle-aged/elderly, "
+                            "very low pitch/low pitch/moderate pitch/high pitch/very high pitch, whisper. "
+                            "Chinese: 四川话/东北话/陕西话/河南话/云南话/贵州话/甘肃话/"
+                            "宁夏话/石家庄话/济南话/青岛话/桂林话, "
+                            "男/女, 儿童/少年/青年/中年/老年, "
+                            "极低音调/低音调/中音调/高音调/极高音调, 耳语. "
+                            "Use comma-separated (English) or full-width comma (Chinese). "
+                            "Leave empty for default."
                         ),
                     },
                 ),
@@ -412,13 +419,10 @@ class OmniVoiceVoiceCloneTTS:
                 try:
                     audio_list = omnivoice_model.generate(**gen_kwargs)
                 except ValueError as e:
-                    if "instruct" in str(e).lower() or "invalid" in str(e).lower():
+                    if "instruct" in str(e).lower() or "unsupported" in str(e).lower():
                         raise RuntimeError(
-                            f"The omnivoice package rejected the instruct value "
-                            f"'{gen_kwargs.get('instruct')}'. "
-                            "This is a validation issue in the omnivoice package itself. "
-                            "If you are using a fine-tuned model, ensure you are on the "
-                            "correct omnivoice version that supports custom speaker tags."
+                            f"Invalid instruct value '{gen_kwargs.get('instruct')}'. "
+                            f"The model only accepts specific values. Original error:\n{e}"
                         ) from e
                     raise
 
