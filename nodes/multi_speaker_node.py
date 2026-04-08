@@ -127,7 +127,9 @@ def _speaker_inputs(count: int) -> list:
                 optional=True,
                 tooltip=(
                     f"Optional dialect/style instruction for speaker {i} "
-                    "(e.g., '四川话' for Sichuan dialect). "
+                    "(e.g., '四川话', 'british accent') or custom fine-tuned "
+                    "speaker name (e.g., '[CustomSpeaker1]'). "
+                    "Any string is passed directly to the model. "
                     "Leave empty for default behaviour."
                 ),
             )
@@ -454,7 +456,18 @@ if _V3:
 
                     # Generate audio for this line
                     with torch.no_grad():
-                        audio_list = omnivoice_model.generate(**gen_kwargs)
+                        try:
+                            audio_list = omnivoice_model.generate(**gen_kwargs)
+                        except ValueError as e:
+                            if "instruct" in str(e).lower() or "invalid" in str(e).lower():
+                                raise RuntimeError(
+                                    f"The omnivoice package rejected the instruct value "
+                                    f"'{gen_kwargs.get('instruct')}'. "
+                                    "This is a validation issue in the omnivoice package itself. "
+                                    "If you are using a fine-tuned model, ensure you are on the "
+                                    "correct omnivoice version that supports custom speaker tags."
+                                ) from e
+                            raise
 
                     audio_tensor = audio_list[0]  # (1, T)
                     audio_np = audio_tensor.squeeze(0).cpu().numpy()
@@ -545,7 +558,9 @@ else:
                         "default": "",
                         "tooltip": (
                             f"Optional dialect/style instruction for speaker {i} "
-                            "(e.g., '四川话' for Sichuan dialect). "
+                            "(e.g., '四川话', 'british accent') or custom fine-tuned "
+                            "speaker name (e.g., '[CustomSpeaker1]'). "
+                            "Any string is passed directly to the model. "
                             "Leave empty for default behaviour."
                         ),
                     },
@@ -763,7 +778,18 @@ else:
 
                     # Generate audio for this line
                     with torch.no_grad():
-                        audio_list = omnivoice_model.generate(**gen_kwargs)
+                        try:
+                            audio_list = omnivoice_model.generate(**gen_kwargs)
+                        except ValueError as e:
+                            if "instruct" in str(e).lower() or "invalid" in str(e).lower():
+                                raise RuntimeError(
+                                    f"The omnivoice package rejected the instruct value "
+                                    f"'{gen_kwargs.get('instruct')}'. "
+                                    "This is a validation issue in the omnivoice package itself. "
+                                    "If you are using a fine-tuned model, ensure you are on the "
+                                    "correct omnivoice version that supports custom speaker tags."
+                                ) from e
+                            raise
 
                     audio_tensor = audio_list[0]  # (1, T)
                     audio_np = audio_tensor.squeeze(0).cpu().numpy()

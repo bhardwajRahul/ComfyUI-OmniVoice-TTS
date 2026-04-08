@@ -244,9 +244,11 @@ Voice Clone, Longform, and Multi-Speaker nodes expose an `instruct` field that t
 | `四川话` | Sichuan dialect |
 | `陕西话` | Shaanxi dialect |
 | `东北话` | Northeastern dialect |
-| `广东话` | Cantonese (spoken in Mandarin style) |
+| `广东话` | Cantonese-style Mandarin (**not officially supported** by the upstream model — only works when using a Cantonese-style reference audio, results may vary) |
 
 Leave the field empty for default behaviour (Standard Mandarin for Chinese text).
+
+> **Note:** `广东话` (Cantonese) is **not officially supported** by the upstream OmniVoice model. It may produce Cantonese-accented Mandarin when paired with a Cantonese-style reference audio clip, but quality and accuracy are not guaranteed. For best results with other dialects, use a matching reference audio.
 
 > **Note:** This is distinct from the Voice Design node's `voice_instruct` field, which controls gender, age, pitch, and accent for synthesising entirely new voices.
 
@@ -261,7 +263,9 @@ Comma-separated attributes for `voice_instruct`:
 | **Pitch** | `very low pitch`, `low pitch`, `medium pitch`, `high pitch`, `very high pitch` |
 | **Style** | `whisper` |
 | **English Accent** | `american accent`, `british accent`, `australian accent`, etc. |
-| **Chinese Dialect** | `四川话`, `陕西话`, `广东话`, `东北话`, `山东话`, etc. |
+| **Chinese Dialect** | `四川话`, `陕西话`, `广东话`†, `东北话`, `山东话`, etc. |
+
+† `广东话` (Cantonese) is not officially supported by the upstream model — only works with a Cantonese-style reference audio, results may vary.
 
 **Example:** `"female, young, high pitch, british accent, whisper"`
 

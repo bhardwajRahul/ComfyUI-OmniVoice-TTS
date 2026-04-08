@@ -253,7 +253,9 @@ class OmniVoiceVoiceCloneTTS:
                         "multiline": False,
                         "default": "",
                         "tooltip": (
-                            "Optional dialect/style instruction (e.g., '四川话' for Sichuan dialect). "
+                            "Optional dialect/style instruction (e.g., '四川话', 'british accent') "
+                            "or custom fine-tuned speaker name (e.g., '[CustomSpeaker1]'). "
+                            "Any string is passed directly to the model. "
                             "Leave empty for default behaviour."
                         ),
                     },
@@ -407,7 +409,18 @@ class OmniVoiceVoiceCloneTTS:
                 gen_kwargs["duration"] = duration
 
             with torch.no_grad():
-                audio_list = omnivoice_model.generate(**gen_kwargs)
+                try:
+                    audio_list = omnivoice_model.generate(**gen_kwargs)
+                except ValueError as e:
+                    if "instruct" in str(e).lower() or "invalid" in str(e).lower():
+                        raise RuntimeError(
+                            f"The omnivoice package rejected the instruct value "
+                            f"'{gen_kwargs.get('instruct')}'. "
+                            "This is a validation issue in the omnivoice package itself. "
+                            "If you are using a fine-tuned model, ensure you are on the "
+                            "correct omnivoice version that supports custom speaker tags."
+                        ) from e
+                    raise
 
             audio_np = audio_list[0].squeeze(0).cpu().numpy()
             result = numpy_audio_to_comfy(audio_np, OMNIVOICE_SAMPLE_RATE)

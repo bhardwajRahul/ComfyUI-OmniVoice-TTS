@@ -253,7 +253,9 @@ OmniVoice的架构（Qwen3骨干）通过transformers支持的注意力后端有
 | **音调** | `very low pitch`、`low pitch`、`medium pitch`、`high pitch`、`very high pitch` |
 | **风格** | `whisper`（耳语） |
 | **英语口音** | `american accent`、`british accent`、`australian accent` 等 |
-| **汉语方言** | `四川话`、`陕西话`、`广东话`、`东北话`、`山东话`、`河南话`、`上海话`、`闽南话`、`客家话` 等 |
+| **汉语方言** | `四川话`、`陕西话`、`广东话`†、`东北话`、`山东话`、`河南话`、`上海话`、`闽南话`、`客家话` 等 |
+
+† `广东话`（粤语）上游模型未正式支持 — 仅在使用粤语风格参考音频时有效，效果因情况而异。
 
 **示例：** `"female, young, high pitch, british accent, whisper"`
 
