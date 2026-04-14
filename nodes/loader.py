@@ -246,9 +246,9 @@ def to_numpy_audio(audio) -> np.ndarray:
     # Squeeze leading batch dim if present (1, T) -> (T,)
     if audio.ndim >= 2 and audio.shape[0] == 1:
         audio = audio.squeeze(0)
-    # Ensure 1-D: (C, T) -> flatten to (T,) for mono TTS output
+    # Ensure 1-D: (C, T) -> mix down to mono for TTS output
     if audio.ndim > 1:
-        audio = audio.reshape(-1)
+        audio = audio.mean(axis=0)
     return audio
 
 
